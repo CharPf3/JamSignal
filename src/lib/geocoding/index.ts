@@ -20,7 +20,7 @@ export async function geocodeLocation(query: string): Promise<GeocodedLocation |
     q: query,
     format: 'json',
     addressdetails: '1',
-    limit: '1',
+    limit: '5',         // fetch a few candidates so we can pick the best
     countrycodes: 'us',
   })
 
@@ -35,8 +35,12 @@ export async function geocodeLocation(query: string): Promise<GeocodedLocation |
   if (!res.ok) return null
 
   const results: NominatimResult[] = await res.json()
-  const result = results[0]
-  if (!result) return null
+  if (!results.length) return null
+
+  // Prefer a result that has an actual city/town — avoids getting a county
+  // or hamlet when the user types just a city name like "Denver".
+  const result =
+    (results.find((r) => r.address.city ?? r.address.town) ?? results[0])!
 
   const city =
     result.address.city ??

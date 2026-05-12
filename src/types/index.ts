@@ -7,7 +7,8 @@ export type EventSource = 'ticketmaster' | 'bandsintown' | 'jambase' | 'communit
 export type Event = {
   id: string                    // external ID from source
   source: EventSource
-  band_name: string
+  band_name: string             // display name (event title from source)
+  artist_name: string           // canonical performer name — used for API lookups
   venue_name: string
   venue_city: string
   venue_state: string | null
@@ -24,7 +25,7 @@ export type EventResult = Event & {
   confidence_score: number | null
   ai_explanation: string | null
   genre_tags: string[]
-  setlist_gd_songs: string[]
+  setlist_jam_songs: string[]
 }
 
 export type SearchParams = {

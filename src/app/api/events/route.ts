@@ -63,36 +63,63 @@ export async function GET(request: NextRequest) {
     final_count: 0,
   }
 
-  // ── Stage 2: Extract unique band names ────────────────────────────
-  const uniqueBands = [...new Set(rawEvents.map((e) => e.band_name))]
-  stats.unique_bands = uniqueBands.length
+  // ── Stage 2: Extract unique bands (band_name → artist_name) ──────
+  // band_name = event title for display; artist_name = canonical name for API lookups
+  const uniqueBandMap = new Map<string, string>()
+  for (const event of rawEvents) {
+    if (!uniqueBandMap.has(event.band_name)) {
+      uniqueBandMap.set(event.band_name, event.artist_name)
+    }
+  }
+  stats.unique_bands = uniqueBandMap.size
 
-  // ── Stage 3 & 4: Enrich each unique band in parallel ─────────────
+  const emptySetlist = {
+    mbid: '',
+    jam_songs: [] as string[],
+    jam_song_count: 0,
+    high_signal_count: 0,
+    setlists_analyzed: 0,
+    attribution_url: 'https://www.setlist.fm',
+    found: false,
+  }
+
+  // ── Stage 3: Spotify enrichment (serialized to avoid rate-limit 429s) ──
+  // Parallel calls cause Spotify to reject most requests with 502/429.
+  // Sequential is ~5–10s for 50 bands but gets reliable results.
   const bandScores = new Map<string, Awaited<ReturnType<typeof scoreBand>>>()
+  const spotifyResults = new Map<string, Awaited<ReturnType<typeof getSpotifyArtistData>>>()
 
-  await Promise.all(
-    uniqueBands.map(async (bandName) => {
-      // Always run Spotify — fast, no ToS concern
-      const spotify = await getSpotifyArtistData(bandName)
-      if (spotify.found) stats.spotify_matched++
-      if (spotify.jam_genre_score > 0) stats.spotify_jam_genres++
+  for (const [bandName, artistName] of uniqueBandMap.entries()) {
+    const spotify = await getSpotifyArtistData(artistName)
+    if (spotify.found) stats.spotify_matched++
+    if (spotify.jam_genre_score > 0) stats.spotify_jam_genres++
+    spotifyResults.set(bandName, spotify)
+    await new Promise((r) => setTimeout(r, 300))
+  }
 
-      // Run Setlist.fm selectively — Tier 1 bands or Spotify-validated
-      const tempScore = scoreBand({ band_name: bandName, spotify, setlist: { mbid: '', gd_songs: [], gd_song_count: 0, high_signal_count: 0, setlists_analyzed: 0, attribution_url: '', found: false } })
-      const runSetlist = tempScore.should_run_setlist
+  // ── Stage 4: Setlist.fm enrichment (selective, serialized) ───────
+  // Sequential to respect Setlist.fm's 2 req/sec rate limit.
+  // Hard cap prevents Spotify failures from blowing up to 50+ setlist calls.
+  const MAX_SETLIST_CALLS = 15
+  let setlistCalls = 0
 
-      let setlist = { mbid: '', gd_songs: [] as string[], gd_song_count: 0, high_signal_count: 0, setlists_analyzed: 0, attribution_url: 'https://www.setlist.fm', found: false }
+  for (const [bandName, artistName] of uniqueBandMap.entries()) {
+    const spotify = spotifyResults.get(bandName)!
+    const tempScore = scoreBand({ band_name: bandName, artist_name: artistName, spotify, setlist: emptySetlist })
 
-      if (runSetlist) {
-        stats.setlist_analyzed++
-        setlist = await getSetlistData(bandName)
-        if (setlist.gd_song_count > 0) stats.setlist_gd_bands++
-      }
+    let setlist = { ...emptySetlist }
 
-      const result = scoreBand({ band_name: bandName, spotify, setlist })
-      bandScores.set(bandName, result)
-    })
-  )
+    if (tempScore.should_run_setlist && setlistCalls < MAX_SETLIST_CALLS) {
+      setlistCalls++
+      stats.setlist_analyzed++
+      setlist = await getSetlistData(artistName)
+      if (setlist.jam_song_count > 0) stats.setlist_gd_bands++
+      await new Promise((resolve) => setTimeout(resolve, 550))
+    }
+
+    const result = scoreBand({ band_name: bandName, artist_name: artistName, spotify, setlist })
+    bandScores.set(bandName, result)
+  }
 
   // ── Stage 5: Build EventResult list ──────────────────────────────
   const events: EventResult[] = rawEvents.map((event) => {
@@ -102,12 +129,16 @@ export async function GET(request: NextRequest) {
       confidence_score: score?.confidence_score ?? null,
       ai_explanation: score?.ai_explanation ?? null,
       genre_tags: score?.genre_tags ?? [],
-      setlist_gd_songs: score?.setlist_gd_songs ?? [],
+      setlist_jam_songs: score?.setlist_jam_songs ?? [],
     }
   })
 
-  // ── Stage 6: Sort by confidence then date ─────────────────────────
-  events.sort((a, b) => {
+  // ── Stage 6: Filter true noise, sort by confidence then date ─────
+  // Only remove events with zero signal — any setlist or genre evidence
+  // (score > 0) is worth showing. The confidence badge communicates strength.
+  const filtered = events.filter((e) => (e.confidence_score ?? 0) > 0)
+
+  filtered.sort((a, b) => {
     const scoreDiff = (b.confidence_score ?? 0) - (a.confidence_score ?? 0)
     if (scoreDiff !== 0) return scoreDiff
     if (a.date < b.date) return -1
@@ -115,7 +146,7 @@ export async function GET(request: NextRequest) {
     return 0
   })
 
-  stats.final_count = events.length
+  stats.final_count = filtered.length
 
   // Log pipeline stats server-side for visibility
   console.log('\n── JamSignal Pipeline Stats ──────────────────────')
@@ -127,7 +158,17 @@ export async function GET(request: NextRequest) {
   console.log(`Setlist analyzed:   ${stats.setlist_analyzed}`)
   console.log(`w/ GD songs:        ${stats.setlist_gd_bands}`)
   console.log(`Final results:      ${stats.final_count}`)
+  console.log('── Band scores ───────────────────────────────────')
+  for (const [bandName, score] of bandScores.entries()) {
+    const spotify = spotifyResults.get(bandName)
+    const marker = score.confidence_score > 0 ? '✓' : '✗'
+    console.log(
+      `  ${marker} ${bandName.padEnd(40)} score=${score.confidence_score.toFixed(1)}` +
+      ` spotify=${spotify?.found ? `✓ (${score.genre_tags.slice(0,2).join(',')})` : '✗'}` +
+      ` jamsongs=${score.setlist_jam_songs.length}`
+    )
+  }
   console.log('──────────────────────────────────────────────────\n')
 
-  return NextResponse.json({ location: geo, radius, events, total: events.length, stats })
+  return NextResponse.json({ location: geo, radius, events: filtered, total: filtered.length, stats })
 }

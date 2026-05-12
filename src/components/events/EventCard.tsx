@@ -76,10 +76,10 @@ export function EventCard({ event }: Props) {
             </p>
           )}
 
-          {/* GD songs */}
-          {event.setlist_gd_songs.length > 0 && (
+          {/* Notable setlist songs */}
+          {event.setlist_jam_songs.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
-              {event.setlist_gd_songs.slice(0, 4).map((song) => (
+              {event.setlist_jam_songs.slice(0, 4).map((song) => (
                 <span
                   key={song}
                   className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full"

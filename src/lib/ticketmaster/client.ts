@@ -1,7 +1,24 @@
 import type { Event } from '@/types'
-import { TIER_1_KEYWORDS, TIER_2_KEYWORDS } from './keywords'
+import { TIER_1_KEYWORDS } from './keywords'
 
-const ALL_KEYWORDS: string[] = [...TIER_1_KEYWORDS, ...TIER_2_KEYWORDS]
+// Keyword searches — match against event titles, artist names, and descriptions.
+// Tier 1 = specific band names. Discovery = genre words that appear in event text.
+const DISCOVERY_KEYWORDS = [
+  'bluegrass',
+  'americana',
+] as const
+
+const ALL_KEYWORDS: string[] = [...TIER_1_KEYWORDS, ...DISCOVERY_KEYWORDS]
+
+// Genre classification searches — use Ticketmaster's taxonomy, not keyword text.
+// These find events tagged by genre even if those words never appear in the title.
+// A local bluegrass act classified as "Folk" by Ticketmaster becomes discoverable here.
+const GENRE_CLASSIFICATIONS = [
+  'Folk',
+  'Blues',
+  'Americana',
+  'Country',
+] as const
 
 type TicketmasterEvent = {
   id: string
@@ -16,6 +33,10 @@ type TicketmasterEvent = {
       city: { name: string }
       state?: { stateCode: string }
       location?: { latitude: string; longitude: string }
+    }>
+    attractions?: Array<{
+      name: string
+      id: string
     }>
   }
 }
@@ -35,6 +56,7 @@ export type FetchEventsParams = {
 
 function mapEvent(raw: TicketmasterEvent, userLat: number, userLon: number): Event {
   const venue = raw._embedded?.venues?.[0]
+  const attraction = raw._embedded?.attractions?.[0]
   const venueLat = venue?.location?.latitude ? parseFloat(venue.location.latitude) : null
   const venueLon = venue?.location?.longitude ? parseFloat(venue.location.longitude) : null
 
@@ -47,6 +69,9 @@ function mapEvent(raw: TicketmasterEvent, userLat: number, userLon: number): Eve
     id: raw.id,
     source: 'ticketmaster',
     band_name: raw.name,
+    // artist_name is the canonical performer name used for Spotify/Setlist lookups.
+    // Falls back to event title when Ticketmaster has no attraction data.
+    artist_name: attraction?.name ?? raw.name,
     venue_name: venue?.name ?? 'Unknown Venue',
     venue_city: venue?.city.name ?? '',
     venue_state: venue?.state?.stateCode ?? null,
@@ -58,9 +83,8 @@ function mapEvent(raw: TicketmasterEvent, userLat: number, userLon: number): Eve
   }
 }
 
-// Haversine formula — great-circle distance in miles
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 3958.8 // Earth radius in miles
+  const R = 3958.8
   const dLat = toRad(lat2 - lat1)
   const dLon = toRad(lon2 - lon1)
   const a =
@@ -73,6 +97,28 @@ function toRad(deg: number) {
   return (deg * Math.PI) / 180
 }
 
+function ingestEvents(
+  events: TicketmasterEvent[],
+  seen: Set<string>,
+  allEvents: Event[],
+  userLat: number,
+  userLon: number
+) {
+  for (const raw of events) {
+    const venue = raw._embedded?.venues?.[0]
+    const key = [
+      raw.name.toLowerCase().trim(),
+      (venue?.name ?? '').toLowerCase().trim(),
+      raw.dates.start.localDate,
+    ].join('|')
+
+    if (!seen.has(key)) {
+      seen.add(key)
+      allEvents.push(mapEvent(raw, userLat, userLon))
+    }
+  }
+}
+
 export async function fetchJamEvents(params: FetchEventsParams): Promise<Event[]> {
   const apiKey = process.env.TICKETMASTER_API_KEY
   if (!apiKey) {
@@ -83,56 +129,63 @@ export async function fetchJamEvents(params: FetchEventsParams): Promise<Event[]
   const startDateTime = `${params.startDate}T00:00:00Z`
   const endDateTime = `${params.endDate}T23:59:59Z`
   const latlong = `${params.latitude},${params.longitude}`
+  const baseGeo = {
+    latlong,
+    radius: String(params.radius),
+    unit: 'miles',
+    startDateTime,
+    endDateTime,
+    size: '50',
+    sort: 'date,asc',
+    apikey: apiKey,
+  }
 
-  // Deduplicate by band+venue+date — the same show can appear across
-  // multiple keyword searches with different Ticketmaster event IDs.
+  // Deduplicate by band+venue+date across both search strategies.
   const seen = new Set<string>()
   const allEvents: Event[] = []
 
-  await Promise.all(
-    ALL_KEYWORDS.map(async (keyword: string) => {
+  await Promise.all([
+    // ── Strategy 1: keyword searches for known acts and genre terms ───
+    ...ALL_KEYWORDS.map(async (keyword) => {
       try {
         const searchParams = new URLSearchParams({
-          apikey: apiKey,
+          ...baseGeo,
           keyword,
-          latlong,
-          radius: String(params.radius),
-          unit: 'miles',
           classificationName: 'Music',
-          startDateTime,
-          endDateTime,
-          size: '50',
-          sort: 'date,asc',
         })
-
         const res = await fetch(
           `https://app.ticketmaster.com/discovery/v2/events.json?${searchParams}`,
           { next: { revalidate: 3600 } }
         )
-
         if (!res.ok) return
-
         const data: TicketmasterResponse = await res.json()
-        const events = data._embedded?.events ?? []
-
-        for (const raw of events) {
-          const venue = raw._embedded?.venues?.[0]
-          const key = [
-            raw.name.toLowerCase().trim(),
-            (venue?.name ?? '').toLowerCase().trim(),
-            raw.dates.start.localDate,
-          ].join('|')
-
-          if (!seen.has(key)) {
-            seen.add(key)
-            allEvents.push(mapEvent(raw, params.latitude, params.longitude))
-          }
-        }
-      } catch {
-        // Individual keyword failures shouldn't break the whole request
+        ingestEvents(data._embedded?.events ?? [], seen, allEvents, params.latitude, params.longitude)
+      } catch (err) {
+        console.warn(`[Ticketmaster] keyword "${keyword}" failed:`, err)
       }
-    })
-  )
+    }),
+
+    // ── Strategy 2: genre classification searches ─────────────────────
+    // Uses Ticketmaster's taxonomy — finds events tagged by genre even if
+    // the genre word never appears in the event title or description.
+    ...GENRE_CLASSIFICATIONS.map(async (genre) => {
+      try {
+        const searchParams = new URLSearchParams({
+          ...baseGeo,
+          classificationName: genre,
+        })
+        const res = await fetch(
+          `https://app.ticketmaster.com/discovery/v2/events.json?${searchParams}`,
+          { next: { revalidate: 3600 } }
+        )
+        if (!res.ok) return
+        const data: TicketmasterResponse = await res.json()
+        ingestEvents(data._embedded?.events ?? [], seen, allEvents, params.latitude, params.longitude)
+      } catch (err) {
+        console.warn(`[Ticketmaster] genre "${genre}" failed:`, err)
+      }
+    }),
+  ])
 
   return allEvents.sort((a, b) => {
     if (a.date < b.date) return -1

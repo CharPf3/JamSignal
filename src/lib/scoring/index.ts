@@ -3,80 +3,73 @@ import type { SpotifyArtistData } from '@/lib/spotify/client'
 import type { SetlistData } from '@/lib/setlistfm/client'
 
 export type ScoringInput = {
-  band_name: string
+  band_name: string    // display name (event title) — shown to user
+  artist_name: string  // canonical performer name — used for Tier 1 matching
   spotify: SpotifyArtistData
   setlist: SetlistData
 }
 
 export type ScoringResult = {
   confidence_score: number       // 0.0–10.0
-  ai_explanation: string         // human-readable reason
+  ai_explanation: string
   genre_tags: string[]
-  setlist_gd_songs: string[]
+  setlist_jam_songs: string[]
   attribution_url: string | null // setlist.fm attribution (ToS requirement)
-  should_run_setlist: boolean    // whether Setlist.fm analysis was warranted
+  should_run_setlist: boolean
 }
 
-// Whether a band name matches a Tier 1 keyword.
-// Checks both exact and substring match to catch things like
-// "Grateful Dead Tribute — The Complete Show".
-function matchesTier1(bandName: string): boolean {
-  const lower = bandName.toLowerCase()
-  return TIER_1_KEYWORDS.some(
-    (kw) => lower === kw || lower.includes(kw)
-  )
+// Match against the canonical artist name, not the full event title.
+// Space-bounded so "neighbor" doesn't match "neighbors", "mule" doesn't match "samuel".
+function matchesTier1(artistName: string): boolean {
+  const lower = artistName.toLowerCase().trim()
+  return TIER_1_KEYWORDS.some((kw) => {
+    if (lower === kw) return true
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(?:^|\\s)${escaped}(?:\\s|$)`).test(lower)
+  })
 }
-
-// Weights for each scoring layer.
-// Total possible raw score: 10 + 10 + 10 + 10 = 40 → normalized to 10.
-const WEIGHTS = {
-  setlist:   0.40,  // GD songs in recent sets — direct evidence
-  tier1:     0.25,  // known jam act by name — we chose these
-  spotify:   0.20,  // jam genre tags from Spotify
-  highSignal: 0.15, // bonus for especially strong GD songs (Scarlet, Dark Star, etc.)
-} as const
 
 export function scoreBand(input: ScoringInput): ScoringResult {
-  const { band_name, spotify, setlist } = input
-  const isTier1 = matchesTier1(band_name)
+  const { artist_name, spotify, setlist } = input
+  const isTier1 = matchesTier1(artist_name)
 
-  // ── Setlist score (0–10) ──────────────────────────────────────────
-  // Scale: 1 song = 1pt, 5 songs = 5pt, 10+ = 10pt (capped)
-  const setlistRaw = Math.min(setlist.gd_song_count, 10)
-  const setlistScore = (setlistRaw / 10) * 10
+  let confidence_score: number
 
-  // ── High-signal bonus (0–10) ──────────────────────────────────────
-  // Extra weight for songs like Dark Star, Scarlet, Terrapin
-  const highSignalScore = Math.min(setlist.high_signal_count * 2, 10)
+  if (isTier1) {
+    // Confirmed jam band — baseline 7.0.
+    // 5+ jam canon songs in recent sets pushes toward 10.
+    // High-signal songs (Dark Star, Reba, YEM…) add up to 0.5 more.
+    const setlistBonus = (Math.min(setlist.jam_song_count, 5) / 5) * 2.5
+    const highSignalBonus = Math.min(setlist.high_signal_count * 0.1, 0.5)
+    confidence_score = parseFloat(Math.min(7.0 + setlistBonus + highSignalBonus, 10).toFixed(1))
+  } else {
+    // Discovery path — must earn the score through evidence.
+    // Capped at 8.5 so discovered acts are distinguished from confirmed Tier 1 bands.
+    const setlistScore = (Math.min(setlist.jam_song_count, 10) / 10) * 10
+    const highSignalScore = Math.min(setlist.high_signal_count * 2, 10)
+    const spotifyScore = spotify.jam_genre_score
 
-  // ── Tier 1 score (0 or 10) ────────────────────────────────────────
-  const tier1Score = isTier1 ? 10 : 0
+    const raw =
+      setlistScore    * 0.45 +
+      highSignalScore * 0.25 +
+      spotifyScore    * 0.30
 
-  // ── Spotify score (0–10) ──────────────────────────────────────────
-  const spotifyScore = spotify.jam_genre_score
-
-  // ── Weighted total → 0.0–10.0 ────────────────────────────────────
-  const raw =
-    setlistScore   * WEIGHTS.setlist +
-    tier1Score     * WEIGHTS.tier1 +
-    spotifyScore   * WEIGHTS.spotify +
-    highSignalScore * WEIGHTS.highSignal
-
-  const confidence_score = parseFloat(Math.min(raw, 10).toFixed(1))
+    confidence_score = parseFloat(Math.min(raw, 8.5).toFixed(1))
+  }
 
   // ── Explanation ───────────────────────────────────────────────────
   const reasons: string[] = []
 
-  if (setlist.gd_songs.length > 0) {
-    const top = setlist.gd_songs.slice(0, 3)
-    const extra = setlist.gd_songs.length > 3 ? ` and ${setlist.gd_songs.length - 3} more` : ''
+  if (isTier1) {
+    reasons.push('Confirmed jam band or Grateful Dead family act')
+  }
+
+  if (setlist.jam_songs.length > 0) {
+    const top = setlist.jam_songs.slice(0, 3)
+    const extra = setlist.jam_songs.length > 3 ? ` and ${setlist.jam_songs.length - 3} more` : ''
     reasons.push(
       `Played ${top.map((s) => titleCase(s)).join(', ')}${extra} across ${setlist.setlists_analyzed} recent shows`
     )
-  }
-
-  if (isTier1) {
-    reasons.push('Confirmed jam band or Grateful Dead family act')
   }
 
   if (spotify.matched_jam_genres.length > 0) {
@@ -94,9 +87,11 @@ export function scoreBand(input: ScoringInput): ScoringResult {
     confidence_score,
     ai_explanation,
     genre_tags: spotify.genres,
-    setlist_gd_songs: setlist.gd_songs,
+    setlist_jam_songs: setlist.jam_songs,
     attribution_url: setlist.found ? setlist.attribution_url : null,
-    should_run_setlist: isTier1 || spotify.jam_genre_score >= 4,
+    // Run Setlist.fm if: confirmed Tier 1 act, OR Spotify confirms jam genres,
+    // OR Spotify has no record of them (local/unsigned acts — setlist is our only signal).
+    should_run_setlist: isTier1 || spotify.jam_genre_score >= 4 || !spotify.found,
   }
 }
 

@@ -1,12 +1,12 @@
-import { isGdSong, isHighSignalGdSong, normalizeSetlistSong } from './gd-songs'
+import { isJamSong, isHighSignalJamSong, normalizeSetlistSong } from './jam-songs'
 
 export type SetlistData = {
-  mbid: string            // MusicBrainz ID — the unique artist identifier setlist.fm uses
-  gd_songs: string[]      // GD songs detected across recent shows (deduplicated)
-  gd_song_count: number   // total GD song appearances (not unique — counts repeats)
-  high_signal_count: number // appearances of especially strong GD signals
+  mbid: string              // MusicBrainz ID — the unique artist identifier setlist.fm uses
+  jam_songs: string[]       // jam canon songs detected across recent shows (deduplicated)
+  jam_song_count: number    // total jam song appearances (counts repeats across shows)
+  high_signal_count: number // appearances of especially strong signals (Reba, Dark Star, YEM, etc.)
   setlists_analyzed: number
-  attribution_url: string  // required by setlist.fm ToS — must display this link
+  attribution_url: string   // required by setlist.fm ToS — must display this link
   found: boolean
 }
 
@@ -95,8 +95,8 @@ export async function getSetlistData(bandName: string): Promise<SetlistData> {
 
   const notFound: SetlistData = {
     mbid: '',
-    gd_songs: [],
-    gd_song_count: 0,
+    jam_songs: [],
+    jam_song_count: 0,
     high_signal_count: 0,
     setlists_analyzed: 0,
     attribution_url: 'https://www.setlist.fm',
@@ -117,8 +117,8 @@ export async function getSetlistData(bandName: string): Promise<SetlistData> {
 
     if (!recent.length) return notFound
 
-    const gdSongsFound = new Set<string>()
-    let gdSongCount = 0
+    const jamSongsFound = new Set<string>()
+    let jamSongCount = 0
     let highSignalCount = 0
     const attributionUrl = recent[0]?.artist.url ?? 'https://www.setlist.fm'
 
@@ -127,20 +127,17 @@ export async function getSetlistData(bandName: string): Promise<SetlistData> {
         for (const song of set.song ?? []) {
           const normalized = normalizeSetlistSong(song.name)
 
-          if (isGdSong(song.name)) {
-            gdSongsFound.add(normalized)
-            gdSongCount++
-
-            if (isHighSignalGdSong(song.name)) {
-              highSignalCount++
-            }
+          if (isJamSong(song.name)) {
+            jamSongsFound.add(normalized)
+            jamSongCount++
+            if (isHighSignalJamSong(song.name)) highSignalCount++
           }
 
-          // Also check if it's a cover of a GD song
-          if (song.cover && isGdSong(song.cover.name)) {
-            gdSongsFound.add(normalizeSetlistSong(song.cover.name))
-            gdSongCount++
-            if (isHighSignalGdSong(song.cover.name)) highSignalCount++
+          // Also check if it's a cover of a jam canon song
+          if (song.cover && isJamSong(song.cover.name)) {
+            jamSongsFound.add(normalizeSetlistSong(song.cover.name))
+            jamSongCount++
+            if (isHighSignalJamSong(song.cover.name)) highSignalCount++
           }
         }
       }
@@ -148,8 +145,8 @@ export async function getSetlistData(bandName: string): Promise<SetlistData> {
 
     return {
       mbid,
-      gd_songs: Array.from(gdSongsFound),
-      gd_song_count: gdSongCount,
+      jam_songs: Array.from(jamSongsFound),
+      jam_song_count: jamSongCount,
       high_signal_count: highSignalCount,
       setlists_analyzed: recent.length,
       attribution_url: attributionUrl,
