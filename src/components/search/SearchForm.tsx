@@ -37,6 +37,7 @@ export function SearchForm({ onSearch, loading }: Props) {
             placeholder="City, state or zip code"
             autoComplete="off"
             disabled={loading}
+            suppressHydrationWarning
             className={cn(
               'w-full pl-9 pr-4 py-3 rounded-xl border border-[var(--border)]',
               'bg-white text-[var(--foreground)] placeholder:text-[var(--muted)]',
@@ -51,6 +52,7 @@ export function SearchForm({ onSearch, loading }: Props) {
           value={radius}
           onChange={(e) => setRadius(Number(e.target.value))}
           disabled={loading}
+          suppressHydrationWarning
           className={cn(
             'px-4 py-3 rounded-xl border border-[var(--border)]',
             'bg-white text-[var(--foreground)] text-sm',

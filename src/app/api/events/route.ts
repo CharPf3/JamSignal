@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { geocodeLocation } from '@/lib/geocoding'
 import { fetchJamEvents } from '@/lib/ticketmaster/client'
+import type { EventResult } from '@/types/index'
 
 function getDateRange(days = 60): { startDate: string; endDate: string } {
   const now = new Date()
@@ -32,13 +33,23 @@ export async function GET(request: NextRequest) {
 
   const { startDate, endDate } = getDateRange(Math.min(days, 90))
 
-  const events = await fetchJamEvents({
+  const rawEvents = await fetchJamEvents({
     latitude: geo.latitude,
     longitude: geo.longitude,
     radius,
     startDate,
     endDate,
   })
+
+  // Promote Event → EventResult, filling Phase 2 fields with empty defaults.
+  // Scoring and AI explanation will populate these in Phase 2.
+  const events: EventResult[] = rawEvents.map((event) => ({
+    ...event,
+    confidence_score: null,
+    ai_explanation: null,
+    genre_tags: [],
+    setlist_gd_songs: [],
+  }))
 
   return NextResponse.json({
     location: geo,

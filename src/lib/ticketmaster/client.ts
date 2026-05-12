@@ -114,14 +114,13 @@ export async function fetchJamEvents(params: FetchEventsParams): Promise<Event[]
   const endDateTime = `${params.endDate}T23:59:59Z`
   const latlong = `${params.latitude},${params.longitude}`
 
-  // Run keyword searches in batches to stay within rate limits
-  const allEvents = new Map<string, Event>()
-
-  // Search a representative set of the most important keywords
-  const keywordsToSearch = JAM_KEYWORDS.slice(0, 10)
+  // Deduplicate by band+venue+date — the same show can appear across
+  // multiple keyword searches with different Ticketmaster event IDs.
+  const seen = new Set<string>()
+  const allEvents: Event[] = []
 
   await Promise.all(
-    keywordsToSearch.map(async (keyword) => {
+    JAM_KEYWORDS.map(async (keyword) => {
       try {
         const searchParams = new URLSearchParams({
           apikey: apiKey,
@@ -132,13 +131,13 @@ export async function fetchJamEvents(params: FetchEventsParams): Promise<Event[]
           classificationName: 'Music',
           startDateTime,
           endDateTime,
-          size: '20',
+          size: '50',
           sort: 'date,asc',
         })
 
         const res = await fetch(
           `https://app.ticketmaster.com/discovery/v2/events.json?${searchParams}`,
-          { next: { revalidate: 3600 } } // cache for 1 hour
+          { next: { revalidate: 3600 } }
         )
 
         if (!res.ok) return
@@ -147,8 +146,16 @@ export async function fetchJamEvents(params: FetchEventsParams): Promise<Event[]
         const events = data._embedded?.events ?? []
 
         for (const raw of events) {
-          if (!allEvents.has(raw.id)) {
-            allEvents.set(raw.id, mapEvent(raw, params.latitude, params.longitude))
+          const venue = raw._embedded?.venues?.[0]
+          const key = [
+            raw.name.toLowerCase().trim(),
+            (venue?.name ?? '').toLowerCase().trim(),
+            raw.dates.start.localDate,
+          ].join('|')
+
+          if (!seen.has(key)) {
+            seen.add(key)
+            allEvents.push(mapEvent(raw, params.latitude, params.longitude))
           }
         }
       } catch {
@@ -157,7 +164,7 @@ export async function fetchJamEvents(params: FetchEventsParams): Promise<Event[]
     })
   )
 
-  return Array.from(allEvents.values()).sort((a, b) => {
+  return allEvents.sort((a, b) => {
     if (a.date < b.date) return -1
     if (a.date > b.date) return 1
     return (a.distance_miles ?? 999) - (b.distance_miles ?? 999)
