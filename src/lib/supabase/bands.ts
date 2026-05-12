@@ -30,7 +30,7 @@ export async function getCachedBand(artistName: string): Promise<CachedBand | nu
   if (!db) return null
 
   const { data, error } = await db
-    .from('bands')
+    .from('band_cache')
     .select('*')
     .eq('artist_name', artistName)
     .gt('expires_at', new Date().toISOString())
@@ -73,7 +73,7 @@ export async function cacheBand(
   const now = new Date()
   const expires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
-  const { error } = await db.from('bands').upsert(
+  const { error } = await db.from('band_cache').upsert(
     {
       artist_name:             artistName,
       spotify_id:              spotify.spotify_id || null,

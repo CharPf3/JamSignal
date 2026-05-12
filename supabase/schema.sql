@@ -3,7 +3,7 @@
 -- Scores are always computed live in code — this table just prevents repeat API calls.
 -- 30-day TTL: algorithm changes redeploy cleanly, stale rows refresh on next lookup.
 
-create table if not exists bands (
+create table if not exists band_cache (
   id               uuid        primary key default gen_random_uuid(),
   artist_name      text        unique not null,
 
@@ -30,7 +30,5 @@ create table if not exists bands (
   expires_at  timestamptz not null default (now() + interval '30 days')
 );
 
--- Fast name lookup (case-insensitive)
-create index if not exists bands_artist_name_idx on bands (lower(artist_name));
--- Efficient expiry sweeps
-create index if not exists bands_expires_at_idx  on bands (expires_at);
+-- Efficient expiry sweeps (artist_name lookup covered by the unique constraint above)
+create index if not exists band_cache_expires_at_idx on band_cache (expires_at);
