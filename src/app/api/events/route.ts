@@ -4,11 +4,13 @@ import { fetchJamEvents } from '@/lib/ticketmaster/client'
 import { getSpotifyArtistData } from '@/lib/spotify/client'
 import { getSetlistData } from '@/lib/setlistfm/client'
 import { scoreBand } from '@/lib/scoring'
+import { getCachedBand, cacheBand } from '@/lib/supabase/bands'
 import type { EventResult } from '@/types/index'
 
 export type PipelineStats = {
   raw_event_count: number
   unique_bands: number
+  cache_hits: number
   spotify_matched: number
   spotify_jam_genres: number
   setlist_analyzed: number
@@ -56,6 +58,7 @@ export async function GET(request: NextRequest) {
   const stats: PipelineStats = {
     raw_event_count: rawEvents.length,
     unique_bands: 0,
+    cache_hits: 0,
     spotify_matched: 0,
     spotify_jam_genres: 0,
     setlist_analyzed: 0,
@@ -76,6 +79,7 @@ export async function GET(request: NextRequest) {
   const emptySetlist = {
     mbid: '',
     jam_songs: [] as string[],
+    gd_songs: [] as string[],
     jam_song_count: 0,
     high_signal_count: 0,
     setlists_analyzed: 0,
@@ -83,30 +87,42 @@ export async function GET(request: NextRequest) {
     found: false,
   }
 
-  // ── Stage 3: Spotify enrichment (serialized to avoid rate-limit 429s) ──
-  // Parallel calls cause Spotify to reject most requests with 502/429.
-  // Sequential is ~5–10s for 50 bands but gets reliable results.
+  // ── Stages 3+4: Enrichment — cache-first, then Spotify + Setlist.fm ──
+  // Cache hit  → skip all API calls, score from stored data instantly.
+  // Cache miss → call Spotify (300ms spacing), then Setlist.fm if warranted,
+  //              then write to cache for next time.
+  const MAX_SETLIST_CALLS = 15
+  let setlistCalls = 0
+
   const bandScores = new Map<string, Awaited<ReturnType<typeof scoreBand>>>()
   const spotifyResults = new Map<string, Awaited<ReturnType<typeof getSpotifyArtistData>>>()
 
   for (const [bandName, artistName] of uniqueBandMap.entries()) {
+    // ── Cache check ───────────────────────────────────────────────
+    const cached = await getCachedBand(artistName)
+
+    if (cached) {
+      stats.cache_hits++
+      if (cached.spotify.found) stats.spotify_matched++
+      if (cached.spotify.jam_genre_score > 0) stats.spotify_jam_genres++
+      if (cached.setlist.found) {
+        stats.setlist_analyzed++
+        if (cached.setlist.jam_song_count > 0) stats.setlist_gd_bands++
+      }
+      spotifyResults.set(bandName, cached.spotify)
+      bandScores.set(bandName, scoreBand({ band_name: bandName, artist_name: artistName, spotify: cached.spotify, setlist: cached.setlist }))
+      continue
+    }
+
+    // ── Spotify ───────────────────────────────────────────────────
     const spotify = await getSpotifyArtistData(artistName)
     if (spotify.found) stats.spotify_matched++
     if (spotify.jam_genre_score > 0) stats.spotify_jam_genres++
     spotifyResults.set(bandName, spotify)
     await new Promise((r) => setTimeout(r, 300))
-  }
 
-  // ── Stage 4: Setlist.fm enrichment (selective, serialized) ───────
-  // Sequential to respect Setlist.fm's 2 req/sec rate limit.
-  // Hard cap prevents Spotify failures from blowing up to 50+ setlist calls.
-  const MAX_SETLIST_CALLS = 15
-  let setlistCalls = 0
-
-  for (const [bandName, artistName] of uniqueBandMap.entries()) {
-    const spotify = spotifyResults.get(bandName)!
+    // ── Setlist.fm (selective) ────────────────────────────────────
     const tempScore = scoreBand({ band_name: bandName, artist_name: artistName, spotify, setlist: emptySetlist })
-
     let setlist = { ...emptySetlist }
 
     if (tempScore.should_run_setlist && setlistCalls < MAX_SETLIST_CALLS) {
@@ -114,11 +130,13 @@ export async function GET(request: NextRequest) {
       stats.setlist_analyzed++
       setlist = await getSetlistData(artistName)
       if (setlist.jam_song_count > 0) stats.setlist_gd_bands++
-      await new Promise((resolve) => setTimeout(resolve, 550))
+      await new Promise((r) => setTimeout(r, 550))
     }
 
-    const result = scoreBand({ band_name: bandName, artist_name: artistName, spotify, setlist })
-    bandScores.set(bandName, result)
+    // ── Cache write ───────────────────────────────────────────────
+    await cacheBand(artistName, spotify, setlist)
+
+    bandScores.set(bandName, scoreBand({ band_name: bandName, artist_name: artistName, spotify, setlist }))
   }
 
   // ── Stage 5: Build EventResult list ──────────────────────────────
@@ -134,8 +152,6 @@ export async function GET(request: NextRequest) {
   })
 
   // ── Stage 6: Filter true noise, sort by confidence then date ─────
-  // Only remove events with zero signal — any setlist or genre evidence
-  // (score > 0) is worth showing. The confidence badge communicates strength.
   const filtered = events.filter((e) => (e.confidence_score ?? 0) > 0)
 
   filtered.sort((a, b) => {
@@ -148,11 +164,11 @@ export async function GET(request: NextRequest) {
 
   stats.final_count = filtered.length
 
-  // Log pipeline stats server-side for visibility
   console.log('\n── JamSignal Pipeline Stats ──────────────────────')
   console.log(`Location:           ${geo.display_name}`)
   console.log(`Raw TM events:      ${stats.raw_event_count}`)
   console.log(`Unique bands:       ${stats.unique_bands}`)
+  console.log(`Cache hits:         ${stats.cache_hits}`)
   console.log(`Spotify matched:    ${stats.spotify_matched}`)
   console.log(`w/ jam genres:      ${stats.spotify_jam_genres}`)
   console.log(`Setlist analyzed:   ${stats.setlist_analyzed}`)
