@@ -1,0 +1,138 @@
+// Canonical Grateful Dead song list used for setlist detection.
+// Includes common alternate titles and abbreviations.
+// All lowercase for case-insensitive matching.
+export const GD_SONGS = new Set([
+  // Classics / most covered
+  'scarlet begonias',
+  'fire on the mountain',
+  'scarlet fire',           // shorthand for scarlet > fire
+  'casey jones',
+  'truckin',
+  "truckin'",
+  'friend of the devil',
+  'ripple',
+  'bertha',
+  'china cat sunflower',
+  'i know you rider',
+  'china cat',
+  'china rider',            // shorthand for china > rider
+  'eyes of the world',
+  'franklin\'s tower',
+  'franklins tower',
+  'sugar magnolia',
+  'sunshine daydream',
+  'sugaree',
+  'estimated prophet',
+  'uncle john\'s band',
+  'uncle johns band',
+  'shakedown street',
+  'alabama getaway',
+  'touch of grey',
+  'built to last',
+  'throwing stones',
+  'iko iko',
+  'terrapin station',
+  'terrapin',
+  'st. stephen',
+  'st stephen',
+  'saint stephen',
+  'the eleven',
+  'dark star',
+  'cryptical envelopment',
+  'the other one',
+  'other one',
+  'wharf rat',
+  'morning dew',
+  'not fade away',
+  'goin\' down the road feeling bad',
+  'going down the road',
+  'brokedown palace',
+  'attics of my life',
+  'box of rain',
+  'what a long strange trip',
+  'truckin\'',
+  'black peter',
+  'deal',
+  'lazy lightning',
+  'supplication',
+  'passenger',
+  'samson and delilah',
+  'if i had the world to give',
+  'looks like rain',
+  'jack straw',
+  'bird song',
+  'birdsong',
+  'el paso',
+  'big railroad blues',
+  'me and my uncle',
+  'mexicali blues',
+  'brown eyed women',
+  'ramble on rose',
+  'tennessee jed',
+  'one more saturday night',
+  'loser',
+  'playing in the band',
+  'here comes sunshine',
+  'let it grow',
+  'weather report suite',
+  'help on the way',
+  'slipknot',
+  'drums',
+  'space',
+  'the wheel',
+  'wheel',
+  'stella blue',
+  'row jimmy',
+  'althea',
+  'high time',
+  'cosmic charlie',
+  'cryptical',
+  'new speedway boogie',
+  'easy wind',
+  'candyman',
+  'operator',
+  'dire wolf',
+  'to lay me down',
+  'turn on your lovelight',
+  'lovelight',
+  'midnight hour',
+  'in the midnight hour',
+  'good lovin\'',
+  'good lovin',
+  'dancing in the street',
+  'around and around',
+  'johnny b. goode',
+  'johnny b goode',
+])
+
+// Known Grateful Dead original songs that are strong signals —
+// covers from non-GD artists are rare enough that any band
+// playing these is almost certainly jam/Dead-adjacent.
+export const HIGH_SIGNAL_GD_SONGS = new Set([
+  'scarlet begonias',
+  'eyes of the world',
+  'dark star',
+  'terrapin station',
+  'estimated prophet',
+  'franklin\'s tower',
+  'franklins tower',
+  'shakedown street',
+  'china cat sunflower',
+  'sugaree',
+  'the other one',
+  'st. stephen',
+  'fire on the mountain',
+  'playing in the band',
+])
+
+export function normalizeSetlistSong(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9\s']/g, '').trim()
+}
+
+export function isGdSong(title: string): boolean {
+  return GD_SONGS.has(normalizeSetlistSong(title))
+}
+
+export function isHighSignalGdSong(title: string): boolean {
+  return HIGH_SIGNAL_GD_SONGS.has(normalizeSetlistSong(title))
+}

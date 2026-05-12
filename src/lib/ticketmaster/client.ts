@@ -1,37 +1,7 @@
 import type { Event } from '@/types'
+import { TIER_1_KEYWORDS, TIER_2_KEYWORDS } from './keywords'
 
-// Grateful Dead and jam-band keywords used to find relevant events.
-// Searched in OR fashion — any match qualifies for initial results.
-const JAM_KEYWORDS = [
-  'grateful dead',
-  'dead & company',
-  'dead and company',
-  'dark star orchestra',
-  'jerry garcia',
-  'phil lesh',
-  'bob weir',
-  'ratdog',
-  'further',
-  'terrapin',
-  'phish',
-  'widespread panic',
-  'string cheese incident',
-  'govt mule',
-  'government mule',
-  'allman brothers',
-  'tedeschi trucks',
-  'umphrees',
-  "umphreys mcgee",
-  'disco biscuits',
-  'moe.',
-  'leftover salmon',
-  'yonder mountain',
-  'railroad earth',
-  'greensky bluegrass',
-  'billy strings',
-  'new riders',
-  'hot tuna',
-]
+const ALL_KEYWORDS: string[] = [...TIER_1_KEYWORDS, ...TIER_2_KEYWORDS]
 
 type TicketmasterEvent = {
   id: string
@@ -120,7 +90,7 @@ export async function fetchJamEvents(params: FetchEventsParams): Promise<Event[]
   const allEvents: Event[] = []
 
   await Promise.all(
-    JAM_KEYWORDS.map(async (keyword) => {
+    ALL_KEYWORDS.map(async (keyword: string) => {
       try {
         const searchParams = new URLSearchParams({
           apikey: apiKey,
