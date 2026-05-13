@@ -1,20 +1,19 @@
 import { getSupabase } from './client'
-import type { SpotifyArtistData } from '@/lib/spotify/client'
+import type { ArtistGenreData } from '@/lib/spotify/client'
 import type { SetlistData } from '@/lib/setlistfm/client'
 
 export type CachedBand = {
-  spotify: SpotifyArtistData
+  genres: ArtistGenreData
   setlist: SetlistData
 }
 
+// Matches the band_cache table columns (see supabase/schema.sql)
 type BandRow = {
   artist_name: string
-  spotify_id: string | null
-  spotify_genres: string[]
-  spotify_jam_genre_score: number
-  spotify_matched_genres: string[]
-  spotify_popularity: number
-  spotify_found: boolean
+  genre_tags: string[]
+  jam_genre_score: number
+  matched_genre_tags: string[]
+  genre_found: boolean
   setlist_mbid: string | null
   jam_songs: string[]
   gd_songs: string[]
@@ -41,13 +40,11 @@ export async function getCachedBand(artistName: string): Promise<CachedBand | nu
   const row = data as BandRow
 
   return {
-    spotify: {
-      spotify_id:         row.spotify_id ?? '',
-      genres:             row.spotify_genres,
-      jam_genre_score:    row.spotify_jam_genre_score,
-      matched_jam_genres: row.spotify_matched_genres,
-      popularity:         row.spotify_popularity,
-      found:              row.spotify_found,
+    genres: {
+      genres:             row.genre_tags,
+      jam_genre_score:    row.jam_genre_score,
+      matched_jam_genres: row.matched_genre_tags,
+      found:              row.genre_found,
     },
     setlist: {
       mbid:              row.setlist_mbid ?? '',
@@ -64,7 +61,7 @@ export async function getCachedBand(artistName: string): Promise<CachedBand | nu
 
 export async function cacheBand(
   artistName: string,
-  spotify: SpotifyArtistData,
+  genres: ArtistGenreData,
   setlist: SetlistData
 ): Promise<void> {
   const db = getSupabase()
@@ -75,13 +72,11 @@ export async function cacheBand(
 
   const { error } = await db.from('band_cache').upsert(
     {
-      artist_name:             artistName,
-      spotify_id:              spotify.spotify_id || null,
-      spotify_genres:          spotify.genres,
-      spotify_jam_genre_score: spotify.jam_genre_score,
-      spotify_matched_genres:  spotify.matched_jam_genres,
-      spotify_popularity:      spotify.popularity,
-      spotify_found:           spotify.found,
+      artist_name:         artistName,
+      genre_tags:          genres.genres,
+      jam_genre_score:     genres.jam_genre_score,
+      matched_genre_tags:  genres.matched_jam_genres,
+      genre_found:         genres.found,
       setlist_mbid:            setlist.mbid || null,
       jam_songs:               setlist.jam_songs,
       gd_songs:                setlist.gd_songs,

@@ -1,5 +1,5 @@
 -- JamSignal band cache table
--- Stores raw API data from Spotify and Setlist.fm.
+-- Stores raw API data from Last.fm and Setlist.fm.
 -- Scores are always computed live in code — this table just prevents repeat API calls.
 -- 30-day TTL: algorithm changes redeploy cleanly, stale rows refresh on next lookup.
 
@@ -7,13 +7,11 @@ create table if not exists band_cache (
   id               uuid        primary key default gen_random_uuid(),
   artist_name      text        unique not null,
 
-  -- Spotify (raw response data)
-  spotify_id               text,
-  spotify_genres           text[]  not null default '{}',
-  spotify_jam_genre_score  integer not null default 0,
-  spotify_matched_genres   text[]  not null default '{}',
-  spotify_popularity       integer not null default 0,
-  spotify_found            boolean not null default false,
+  -- Last.fm (genre/tag data)
+  genre_tags           text[]  not null default '{}',
+  jam_genre_score      integer not null default 0,
+  matched_genre_tags   text[]  not null default '{}',
+  genre_found          boolean not null default false,
 
   -- Setlist.fm (raw response data)
   setlist_mbid             text,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { geocodeLocation } from '@/lib/geocoding'
 import { fetchJamEvents } from '@/lib/ticketmaster/client'
-import { getSpotifyArtistData } from '@/lib/spotify/client'
+import { getLastFmData } from '@/lib/lastfm/client'
 import { getSetlistData } from '@/lib/setlistfm/client'
 import { scoreBand } from '@/lib/scoring'
 import { getCachedBand, cacheBand } from '@/lib/supabase/bands'
@@ -11,8 +11,8 @@ export type PipelineStats = {
   raw_event_count: number
   unique_bands: number
   cache_hits: number
-  spotify_matched: number
-  spotify_jam_genres: number
+  lastfm_matched: number
+  lastfm_jam_genres: number
   setlist_analyzed: number
   setlist_gd_bands: number
   final_count: number
@@ -59,8 +59,8 @@ export async function GET(request: NextRequest) {
     raw_event_count: rawEvents.length,
     unique_bands: 0,
     cache_hits: 0,
-    spotify_matched: 0,
-    spotify_jam_genres: 0,
+    lastfm_matched: 0,
+    lastfm_jam_genres: 0,
     setlist_analyzed: 0,
     setlist_gd_bands: 0,
     final_count: 0,
@@ -69,9 +69,11 @@ export async function GET(request: NextRequest) {
   // ── Stage 2: Extract unique bands (band_name → artist_name) ──────
   // band_name = event title for display; artist_name = canonical name for API lookups
   const uniqueBandMap = new Map<string, string>()
+  const bandTmGenre = new Map<string, { tm_genre: string | null; tm_subgenre: string | null }>()
   for (const event of rawEvents) {
     if (!uniqueBandMap.has(event.band_name)) {
       uniqueBandMap.set(event.band_name, event.artist_name)
+      bandTmGenre.set(event.band_name, { tm_genre: event.tm_genre, tm_subgenre: event.tm_subgenre })
     }
   }
   stats.unique_bands = uniqueBandMap.size
@@ -87,15 +89,14 @@ export async function GET(request: NextRequest) {
     found: false,
   }
 
-  // ── Stages 3+4: Enrichment — cache-first, then Spotify + Setlist.fm ──
+  // ── Stages 3+4: Enrichment — cache-first, then Last.fm + Setlist.fm ──
   // Cache hit  → skip all API calls, score from stored data instantly.
-  // Cache miss → call Spotify (300ms spacing), then Setlist.fm if warranted,
-  //              then write to cache for next time.
+  // Cache miss → call Last.fm, then Setlist.fm if warranted, then write to cache.
   const MAX_SETLIST_CALLS = 15
   let setlistCalls = 0
 
   const bandScores = new Map<string, Awaited<ReturnType<typeof scoreBand>>>()
-  const spotifyResults = new Map<string, Awaited<ReturnType<typeof getSpotifyArtistData>>>()
+  const genreResults = new Map<string, Awaited<ReturnType<typeof getLastFmData>>>()
 
   for (const [bandName, artistName] of uniqueBandMap.entries()) {
     // ── Cache check ───────────────────────────────────────────────
@@ -103,40 +104,46 @@ export async function GET(request: NextRequest) {
 
     if (cached) {
       stats.cache_hits++
-      if (cached.spotify.found) stats.spotify_matched++
-      if (cached.spotify.jam_genre_score > 0) stats.spotify_jam_genres++
+      if (cached.genres.found) stats.lastfm_matched++
+      if (cached.genres.jam_genre_score > 0) stats.lastfm_jam_genres++
       if (cached.setlist.found) {
         stats.setlist_analyzed++
         if (cached.setlist.jam_song_count > 0) stats.setlist_gd_bands++
       }
-      spotifyResults.set(bandName, cached.spotify)
-      bandScores.set(bandName, scoreBand({ band_name: bandName, artist_name: artistName, spotify: cached.spotify, setlist: cached.setlist }))
+      genreResults.set(bandName, cached.genres)
+      const tmData = bandTmGenre.get(bandName) ?? { tm_genre: null, tm_subgenre: null }
+      bandScores.set(bandName, scoreBand({ band_name: bandName, artist_name: artistName, genres: cached.genres, setlist: cached.setlist, ...tmData }))
       continue
     }
 
-    // ── Spotify ───────────────────────────────────────────────────
-    const spotify = await getSpotifyArtistData(artistName)
-    if (spotify.found) stats.spotify_matched++
-    if (spotify.jam_genre_score > 0) stats.spotify_jam_genres++
-    spotifyResults.set(bandName, spotify)
-    await new Promise((r) => setTimeout(r, 300))
+    const tmData = bandTmGenre.get(bandName) ?? { tm_genre: null, tm_subgenre: null }
+
+    // ── Last.fm (genre tags) ──────────────────────────────────────
+    const genres = await getLastFmData(artistName)
+    if (genres.found) stats.lastfm_matched++
+    if (genres.jam_genre_score > 0) stats.lastfm_jam_genres++
+    genreResults.set(bandName, genres)
+    await new Promise((r) => setTimeout(r, 220))
 
     // ── Setlist.fm (selective) ────────────────────────────────────
-    const tempScore = scoreBand({ band_name: bandName, artist_name: artistName, spotify, setlist: emptySetlist })
+    const tempScore = scoreBand({ band_name: bandName, artist_name: artistName, genres, setlist: emptySetlist, ...tmData })
     let setlist = { ...emptySetlist }
 
-    if (tempScore.should_run_setlist && setlistCalls < MAX_SETLIST_CALLS) {
-      setlistCalls++
+    const isTier1Band = tempScore.confidence_score >= 7.0
+    if (tempScore.should_run_setlist && (isTier1Band || setlistCalls < MAX_SETLIST_CALLS)) {
+      if (!isTier1Band) setlistCalls++
       stats.setlist_analyzed++
       setlist = await getSetlistData(artistName)
       if (setlist.jam_song_count > 0) stats.setlist_gd_bands++
       await new Promise((r) => setTimeout(r, 550))
     }
 
-    // ── Cache write ───────────────────────────────────────────────
-    await cacheBand(artistName, spotify, setlist)
+    // ── Cache write (only when we got real data) ──────────────────
+    if (genres.found || setlist.found) {
+      await cacheBand(artistName, genres, setlist)
+    }
 
-    bandScores.set(bandName, scoreBand({ band_name: bandName, artist_name: artistName, spotify, setlist }))
+    bandScores.set(bandName, scoreBand({ band_name: bandName, artist_name: artistName, genres, setlist, ...tmData }))
   }
 
   // ── Stage 5: Build EventResult list ──────────────────────────────
@@ -152,7 +159,9 @@ export async function GET(request: NextRequest) {
   })
 
   // ── Stage 6: Filter true noise, sort by confidence then date ─────
-  const filtered = events.filter((e) => (e.confidence_score ?? 0) > 0)
+  // 2.5 floor: genre adjacency alone (no jam tag, no setlist evidence) scores ~0.9–2.1
+  // and should not surface. Anything passing 2.5 has at least one real signal.
+  const filtered = events.filter((e) => (e.confidence_score ?? 0) >= 2.5)
 
   filtered.sort((a, b) => {
     const scoreDiff = (b.confidence_score ?? 0) - (a.confidence_score ?? 0)
@@ -169,18 +178,18 @@ export async function GET(request: NextRequest) {
   console.log(`Raw TM events:      ${stats.raw_event_count}`)
   console.log(`Unique bands:       ${stats.unique_bands}`)
   console.log(`Cache hits:         ${stats.cache_hits}`)
-  console.log(`Spotify matched:    ${stats.spotify_matched}`)
-  console.log(`w/ jam genres:      ${stats.spotify_jam_genres}`)
+  console.log(`Last.fm matched:    ${stats.lastfm_matched}`)
+  console.log(`w/ jam genres:      ${stats.lastfm_jam_genres}`)
   console.log(`Setlist analyzed:   ${stats.setlist_analyzed}`)
-  console.log(`w/ GD songs:        ${stats.setlist_gd_bands}`)
+  console.log(`w/ jam songs:       ${stats.setlist_gd_bands}`)
   console.log(`Final results:      ${stats.final_count}`)
   console.log('── Band scores ───────────────────────────────────')
   for (const [bandName, score] of bandScores.entries()) {
-    const spotify = spotifyResults.get(bandName)
+    const genreData = genreResults.get(bandName)
     const marker = score.confidence_score > 0 ? '✓' : '✗'
     console.log(
       `  ${marker} ${bandName.padEnd(40)} score=${score.confidence_score.toFixed(1)}` +
-      ` spotify=${spotify?.found ? `✓ (${score.genre_tags.slice(0,2).join(',')})` : '✗'}` +
+      ` lastfm=${genreData?.found ? `✓ (${score.genre_tags.slice(0,2).join(',')})` : '✗'}` +
       ` jamsongs=${score.setlist_jam_songs.length}`
     )
   }

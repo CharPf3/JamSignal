@@ -27,6 +27,12 @@ type TicketmasterEvent = {
     start: { localDate: string }
   }
   url: string
+  classifications?: Array<{
+    primary?: boolean
+    segment?: { name: string }
+    genre?: { name: string }
+    subGenre?: { name: string }
+  }>
   _embedded?: {
     venues?: Array<{
       name: string
@@ -65,6 +71,8 @@ function mapEvent(raw: TicketmasterEvent, userLat: number, userLon: number): Eve
       ? haversineDistance(userLat, userLon, venueLat, venueLon)
       : null
 
+  const primaryClass = raw.classifications?.find((c) => c.primary) ?? raw.classifications?.[0]
+
   return {
     id: raw.id,
     source: 'ticketmaster',
@@ -80,6 +88,8 @@ function mapEvent(raw: TicketmasterEvent, userLat: number, userLon: number): Eve
     date: raw.dates.start.localDate,
     ticket_url: raw.url,
     distance_miles: distance,
+    tm_genre: primaryClass?.genre?.name ?? null,
+    tm_subgenre: primaryClass?.subGenre?.name ?? null,
   }
 }
 

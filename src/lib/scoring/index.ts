@@ -1,12 +1,35 @@
 import { TIER_1_KEYWORDS } from '@/lib/ticketmaster/keywords'
-import type { SpotifyArtistData } from '@/lib/spotify/client'
+import type { ArtistGenreData } from '@/lib/spotify/client'
 import type { SetlistData } from '@/lib/setlistfm/client'
+
+// TM genres are broad (Rock, Folk, Blues) — scores top out at 5 to reflect lower specificity.
+// Used as a floor when Last.fm has no data; Last.fm wins when both are present.
+const TM_GENRE_SCORES: Record<string, number> = {
+  'folk':        4,
+  'americana':   4,
+  'blues':       3,
+  'country':     3,
+  'rock':        2,
+  'alternative': 2,
+  'jazz':        2,
+}
+
+function scoreTmGenre(genre: string | null, subGenre: string | null): number {
+  const sub = (subGenre ?? '').toLowerCase()
+  const gen = (genre ?? '').toLowerCase()
+  for (const [key, val] of Object.entries(TM_GENRE_SCORES)) {
+    if (sub.includes(key)) return Math.min(val + 1, 5)
+  }
+  return TM_GENRE_SCORES[gen] ?? 0
+}
 
 export type ScoringInput = {
   band_name: string    // display name (event title) — shown to user
   artist_name: string  // canonical performer name — used for Tier 1 matching
-  spotify: SpotifyArtistData
+  genres: ArtistGenreData
   setlist: SetlistData
+  tm_genre: string | null
+  tm_subgenre: string | null
 }
 
 export type ScoringResult = {
@@ -30,8 +53,9 @@ function matchesTier1(artistName: string): boolean {
 }
 
 export function scoreBand(input: ScoringInput): ScoringResult {
-  const { artist_name, spotify, setlist } = input
+  const { artist_name, genres, setlist, tm_genre, tm_subgenre } = input
   const isTier1 = matchesTier1(artist_name)
+  const genreScore = Math.max(genres.jam_genre_score, scoreTmGenre(tm_genre, tm_subgenre))
 
   let confidence_score: number
 
@@ -47,12 +71,11 @@ export function scoreBand(input: ScoringInput): ScoringResult {
     // Capped at 8.5 so discovered acts are distinguished from confirmed Tier 1 bands.
     const setlistScore = (Math.min(setlist.jam_song_count, 10) / 10) * 10
     const highSignalScore = Math.min(setlist.high_signal_count * 2, 10)
-    const spotifyScore = spotify.jam_genre_score
 
     const raw =
       setlistScore    * 0.45 +
       highSignalScore * 0.25 +
-      spotifyScore    * 0.30
+      genreScore      * 0.30
 
     confidence_score = parseFloat(Math.min(raw, 8.5).toFixed(1))
   }
@@ -72,26 +95,35 @@ export function scoreBand(input: ScoringInput): ScoringResult {
     )
   }
 
-  if (spotify.matched_jam_genres.length > 0) {
-    reasons.push(`Genre: ${spotify.matched_jam_genres.slice(0, 2).join(', ')}`)
+  if (genres.matched_jam_genres.length > 0) {
+    reasons.push(`Genre: ${genres.matched_jam_genres.slice(0, 2).join(', ')}`)
   }
+
+  const signal_label =
+    confidence_score >= 7.5 ? 'High-confidence jam signal' :
+    confidence_score >= 4.0 ? 'Strong jam-adjacent signal' :
+    confidence_score >= 2.5 ? 'Possible fit — limited but relevant signal' :
+                              'Weak signal — excluded from results'
 
   const ai_explanation =
     reasons.length > 0
-      ? reasons.join(' · ')
-      : confidence_score >= 5
-        ? 'Matches jam band search criteria'
-        : 'Loosely jam-adjacent — limited data available'
+      ? `${signal_label} · ${reasons.join(' · ')}`
+      : signal_label
+
+  const genre_tags =
+    genres.genres.length > 0
+      ? genres.genres
+      : [tm_genre, tm_subgenre].filter((g): g is string => !!g)
 
   return {
     confidence_score,
     ai_explanation,
-    genre_tags: spotify.genres,
+    genre_tags,
     setlist_jam_songs: setlist.jam_songs,
     attribution_url: setlist.found ? setlist.attribution_url : null,
-    // Run Setlist.fm if: confirmed Tier 1 act, OR Spotify confirms jam genres,
-    // OR Spotify has no record of them (local/unsigned acts — setlist is our only signal).
-    should_run_setlist: isTier1 || spotify.jam_genre_score >= 4 || !spotify.found,
+    // Run Setlist.fm if: confirmed Tier 1 act, OR genre signal (Last.fm or TM) is strong,
+    // OR Last.fm has no record of them (local/unsigned acts — setlist is our only signal).
+    should_run_setlist: isTier1 || genreScore >= 4 || !genres.found,
   }
 }
 

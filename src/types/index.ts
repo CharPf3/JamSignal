@@ -17,6 +17,8 @@ export type Event = {
   date: string                  // ISO date string
   ticket_url: string | null
   distance_miles: number | null // populated after geo-calculation
+  tm_genre: string | null       // Ticketmaster genre classification
+  tm_subgenre: string | null    // Ticketmaster subgenre classification
   band?: import('./database').Band  // populated if band is in our DB
 }
 

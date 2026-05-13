@@ -36,12 +36,12 @@ const JAM_GENRES: Record<string, number> = {
   'indie folk':             2,
 }
 
-export type SpotifyArtistData = {
-  spotify_id: string
+// Renamed from SpotifyArtistData — Last.fm now populates this type.
+// Kept here as the shared genre data contract used by caching and scoring.
+export type ArtistGenreData = {
   genres: string[]
   jam_genre_score: number      // sum of matched genre weights, capped at 10
-  matched_jam_genres: string[] // which jam genres matched
-  popularity: number           // 0–100
+  matched_jam_genres: string[] // which genre tags matched
   found: boolean
 }
 
@@ -207,14 +207,38 @@ export async function getSpotifyArtistData(bandName: string): Promise<SpotifyArt
 
     if (!best) return notFound
 
-    const { score, matched } = scoreGenres(best.genres ?? [])
+    // Search returns simplified artist objects — genres are often missing.
+    // Fetch the full artist record when genres came back empty.
+    let fullArtist = best
+    if (!best.genres?.length) {
+      try {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 4000)
+        const res = await fetch(`https://api.spotify.com/v1/artists/${best.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        clearTimeout(timeout)
+        if (res.ok) {
+          fullArtist = (await res.json()) as SpotifyArtist
+          if (fullArtist.genres?.length) {
+            console.log(`[Spotify] "${best.name}" → fetched full artist, genres: ${fullArtist.genres.join(', ')}`)
+          }
+        }
+      } catch {
+        // Non-fatal — fall back to whatever the search returned
+      }
+    }
+
+    const { score, matched } = scoreGenres(fullArtist.genres ?? [])
 
     return {
-      spotify_id: best.id,
-      genres: best.genres ?? [],
+      spotify_id: fullArtist.id,
+      genres: fullArtist.genres ?? [],
       jam_genre_score: score,
       matched_jam_genres: matched,
-      popularity: best.popularity,
+      popularity: fullArtist.popularity,
       found: true,
     }
   } catch (err) {
