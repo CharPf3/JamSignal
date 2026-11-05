@@ -21,7 +21,7 @@ import { geocodeLocation } from './sources/geocoding'
 import { fetchEvents } from './sources/ticketmaster'
 import { lookupArtists } from './artists'
 import { resetCacheBreaker, cacheStatus } from './artists/cache'
-import { DISPLAY_THRESHOLD, MARGINAL_THRESHOLD } from './scoring/weights'
+import { DISPLAY_THRESHOLD, MARGINAL_THRESHOLD, MODEL_METRICS, MODEL_VERSION } from './scoring'
 import type { ArtistGroup, SearchResponse } from '@/types'
 
 export type SearchOptions = {
@@ -172,6 +172,11 @@ export async function search(options: SearchOptions): Promise<SearchSuccess | Se
           ...(cacheStatus().state === 'ok' ? [] : [`artist cache ${cacheStatus().state}`]),
         ],
         elapsed_ms: Date.now() - started,
+        model: {
+          version: MODEL_VERSION,
+          precision: MODEL_METRICS.precision.mean,
+          recall: MODEL_METRICS.recall.mean,
+        },
       },
     },
   }

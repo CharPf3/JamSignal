@@ -33,7 +33,7 @@ import { env } from '@/lib/core/env'
 import { fetchJson, HttpError } from '@/lib/core/http'
 import { throttle } from '@/lib/core/concurrency'
 import { normalizeName } from '@/lib/canon/normalize'
-import { SEED_ACTS } from '@/lib/canon/acts'
+import { isCoverReferenceAct } from '@/lib/canon/acts'
 import { isJamSong, isSignatureSong, isGdSong } from '@/lib/canon/songs'
 
 export type SetlistData = {
@@ -84,8 +84,6 @@ const limit = throttle(2)
 
 /** How many recent shows to examine. */
 const SHOWS_TO_ANALYZE = 15
-
-const SEED_NAMES = new Set(SEED_ACTS.map(normalizeName))
 
 /** Placeholder setlist.fm uses for public-domain material. */
 const TRADITIONAL = new Set(['traditional', 'unknown'])
@@ -140,7 +138,7 @@ export async function getSetlistData(mbid: string): Promise<SetlistData> {
         const coverName = song.cover?.name
         if (coverName && !TRADITIONAL.has(normalizeName(coverName))) {
           const key = normalizeName(coverName)
-          if (SEED_NAMES.has(key)) {
+          if (isCoverReferenceAct(coverName)) {
             showJamCovers++
             coverCounts.set(coverName, (coverCounts.get(coverName) ?? 0) + 1)
             if (key === 'grateful dead') playsDead = true

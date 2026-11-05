@@ -9,9 +9,9 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:scores": "vitest run tests/scoring.ranking.test.ts --disable-console-intercept",
     "typecheck": "tsc --noEmit",
-    "backfill": "tsx scripts/backfill.ts"
+    "backfill": "tsx scripts/backfill.ts",
+    "fit": "tsx scripts/fit-model.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

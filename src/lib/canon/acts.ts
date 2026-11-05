@@ -123,6 +123,30 @@ export const SEARCH_SEEDS: readonly string[] = [
   'phish tribute',
 ]
 
+/**
+ * Reference acts for setlist.fm cover attribution.
+ *
+ * MUST stay identical to the CORE set used when fitting the scoring model —
+ * `coreCoversPerShow` is a model feature, and changing which acts count would
+ * silently shift the feature's meaning away from the weights that were learned
+ * for it. Any change here requires refitting via `npm run fit`.
+ *
+ * Narrower than SEED_ACTS on purpose: these are the acts whose material is
+ * distinctive enough that covering them is evidence in itself.
+ */
+export const COVER_REFERENCE_ACTS = [
+  'Grateful Dead', 'Phish', 'Widespread Panic', 'The Allman Brothers Band',
+  'Jerry Garcia Band', 'Goose', 'The String Cheese Incident', "Umphrey's McGee",
+  'Leftover Salmon', 'The Disco Biscuits', 'moe.', "Gov't Mule",
+  'Trey Anastasio', 'Billy Strings', 'Greensky Bluegrass', 'Railroad Earth',
+  "Joe Russo's Almost Dead",
+] as const
+
+const COVER_SET = new Set(COVER_REFERENCE_ACTS.map(normalizeName))
+
+/** Whether covering this act counts as jam-canon cover evidence. */
+export const isCoverReferenceAct = (name: string): boolean => COVER_SET.has(normalizeName(name))
+
 const SEED_SET = new Set(SEED_ACTS.map(normalizeName))
 const KNOWN_SET = new Set(KNOWN_ACTS.map(normalizeName))
 

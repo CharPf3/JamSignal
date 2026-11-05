@@ -27,7 +27,6 @@ import { resolveArtist, type ResolvedArtist } from '@/lib/sources/musicbrainz'
 import { getLastFmData, EMPTY_LASTFM, type LastFmData } from '@/lib/sources/lastfm'
 import { getSetlistData, EMPTY_SETLIST } from '@/lib/sources/setlistfm'
 import { scoreArtist, type ScoringResult } from '@/lib/scoring'
-import { AMBIGUOUS_TAG_FLOOR } from '@/lib/scoring/weights'
 import { readArtists, writeArtists } from './cache'
 import { prioritize, type PriorityInput } from './priority'
 
@@ -37,7 +36,7 @@ export type ArtistAnalysis = {
   score: number
   score_label: string
   reasons: string[]
-  signals: Array<{ key: string; label: string; points: number; max: number; detail: string | null }>
+  signals: Array<{ key: string; label: string; weight: number; detail: string | null }>
   notable_songs: string[]
   attribution_url: string | null
   name_ambiguous: boolean
@@ -69,7 +68,7 @@ const toAnalysis = (name: string, mbid: string | null, result: ScoringResult): A
   score_label: result.label,
   reasons: result.reasons,
   signals: result.contributions.map((c) => ({
-    key: c.key, label: c.label, points: c.points, max: c.max, detail: c.detail,
+    key: c.key, label: c.label, weight: c.weight, detail: c.detail,
   })),
   notable_songs: result.notableSongs,
   attribution_url: result.attributionUrl,
@@ -94,7 +93,7 @@ function warrantsResolution(name: string, lastfm: LastFmData): boolean {
   // Thresholds rather than `> 0`: a stray tag or a single weak similarity
   // match is noise, and an earlier version spent MusicBrainz seconds resolving
   // Jack White and The Jayhawks off exactly that.
-  if (lastfm.jamTagStrength >= AMBIGUOUS_TAG_FLOOR) return true
+  if (lastfm.jamTagStrength >= 0.05) return true
   if (lastfm.similarityAffinity >= 0.1) return true
   if (lastfm.adjacentTagStrength >= 0.2) return true
   return false

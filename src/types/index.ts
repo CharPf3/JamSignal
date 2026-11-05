@@ -34,8 +34,8 @@ export type Event = {
 export type ScoreSignal = {
   key: string
   label: string
-  points: number
-  max: number
+  /** Share of the total positive evidence behind the score, 0–1. */
+  weight: number
   detail: string | null
 }
 
@@ -98,6 +98,8 @@ export type SearchDiagnostics = {
   /** Services that could not run because configuration is missing. */
   missing_config: string[]
   elapsed_ms: number
+  /** Which scoring model produced these results, and how it measures. */
+  model: { version: string; precision: number; recall: number }
 }
 
 export type SearchResponse = {

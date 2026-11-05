@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
       pending: g.pending,
       ambiguous: g.name_ambiguous,
       shows: g.events.length,
-      signals: g.signals.map((s) => `${s.key}=${s.points}/${s.max}`),
+      signals: g.signals.map((s) => `${s.key}=${Math.round(s.weight * 100)}%`),
       reasons: g.reasons,
     }))
 

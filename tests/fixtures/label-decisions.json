@@ -1,0 +1,26 @@
+{
+ "_comment": "Label corrections from auditing the pool. Each promotion has a justification INDEPENDENT of the graph feature that surfaced it — otherwise this is just training on the model's own output. Contested acts are moved to 'borderline' and excluded from training rather than forced to a side.",
+ "promote_to_jam": {
+  "Dead Floyd": "Grateful Dead / Pink Floyd tribute act — name and repertoire",
+  "BERTHA: Grateful Drag": "Grateful Dead tribute ('Bertha' is a Dead song)",
+  "Melvin Seals and JGB": "Jerry Garcia Band; spelling variant of 'Melvin Seals & JGB' already in the curated list",
+  "Sicard Hollow": "Last.fm tags are explicitly 'jam band, jamgrass' — tag evidence, independent of the graph",
+  "Wookiefoot": "carries an explicit 'jam' tag",
+  "Daniel Donato": "bare-name variant of 'Daniel Donato's Cosmic Country' already in the curated list",
+  "Mountain Grass Unit": "jamgrass act on the festival circuit",
+  "Sam Grisman Project": "Grisman/Garcia lineage, plays the Dead and newgrass repertoire"
+ },
+ "move_to_borderline": {
+  "Mark O'Connor": "bluegrass/fiddle virtuoso; crosses into the scene but is not of it",
+  "Charlie Hunter": "jazz guitarist who works the jam circuit",
+  "John Scofield": "same — jazz with deep jam-circuit ties",
+  "Stanley Clarke": "fusion; adjacent not resident",
+  "Joe Bonamassa": "blues revival with jam-circuit overlap",
+  "Tab Benoit": "Louisiana blues, festival overlap",
+  "The Steepwater Band": "blues/southern rock on the jam circuit",
+  "The Record Company": "blues rock, contested",
+  "The California Honeydrops": "roots/soul act that works the jam festival circuit",
+  "Cory Wong": "Vulfpeck-adjacent funk; contested",
+  "The Last Revel": "string band, contested"
+ }
+}
