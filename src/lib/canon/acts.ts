@@ -89,6 +89,8 @@ const KNOWN_ACT_GROUPS = {
     'Daniel Donato', "Daniel Donato's Cosmic Country", 'Magic Beans',
     'Andy Frasco', 'Andy Frasco & The U.N.', 'Cycles', 'Sunsquabi',
     'The Fritz', 'Chemical X', 'Lotus', 'Papadosio', 'Tauk', 'Mungion',
+    'STS9', 'Sound Tribe Sector 9', 'The Werks', 'Pink Talking Fish',
+    'Ghost Light', 'Circles Around The Sun', 'Doom Flamingo', 'Yam Yam',
   ],
   rootsCrossover: [
     'North Mississippi Allstars', 'Robert Randolph', 'Robert Randolph & The Family Band',
@@ -96,6 +98,9 @@ const KNOWN_ACT_GROUPS = {
     'The Motet', 'Karl Denson', "Karl Denson's Tiny Universe", 'The Nth Power',
     'Fruition', 'Armchair Boogie', 'The Travelin McCourys', 'Sam Bush',
     'Peter Rowan', 'Del McCoury Band', 'The Del McCoury Band',
+    'Victor Wooten', 'Victor Wooten & The Wooten Brothers', 'Bela Fleck',
+    "Béla Fleck and the Flecktones", 'The Flecktones', 'Oteil & Friends',
+    'Jerry Joseph', 'Chris Robinson Brotherhood', 'The Black Crowes',
   ],
 } as const
 

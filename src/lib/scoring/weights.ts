@@ -93,8 +93,24 @@ export const SATURATION = {
  */
 export const AMBIGUOUS_TAG_FLOOR = 0.05
 
-/** Minimum score to surface in results. */
+/**
+ * Minimum score to present as a confident result.
+ *
+ * On the labelled set this gives 27/30 recall with zero false positives. The
+ * three misses are regional americana-leaning acts — Fruition, Armchair
+ * Boogie, Melt — scoring 1.0 to 2.2, just under the cut.
+ *
+ * Dropping the threshold to 2.1 would capture two of them, since the highest
+ * non-jam act in the set scores 2.0. That 0.1 margin is not a real separation
+ * on 55 samples, and the act it clears is Trampled by Turtles, whose own label
+ * is arguable. Rather than tune the cut, scores between MARGINAL_THRESHOLD and
+ * DISPLAY_THRESHOLD are shown in a separate, clearly weaker section — the user
+ * gets the information without the app claiming confidence it has not earned.
+ */
 export const DISPLAY_THRESHOLD = 2.5
+
+/** Floor for the "weaker signal" section. Below this, nothing is shown. */
+export const MARGINAL_THRESHOLD = 1.8
 
 /** Score bands used for labelling in the UI. */
 export const BANDS = [

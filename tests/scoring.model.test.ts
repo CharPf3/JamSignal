@@ -78,7 +78,7 @@ function auc(values: (s: (typeof scored)[number]) => number): number {
 describe('scoring model — separation', () => {
   it('separates jam from non-jam acts far better than chance', () => {
     const score = auc((s) => s.result.score)
-    // eslint-disable-next-line no-console
+     
     console.log(`\n  AUC = ${score.toFixed(3)}  (0.5 = coin flip)`)
     expect(score).toBeGreaterThan(0.9)
   })
@@ -87,7 +87,7 @@ describe('scoring model — separation', () => {
     const mean = (set: typeof scored) => set.reduce((a, s) => a + s.result.score, 0) / set.length
     const jamMean = mean(jam)
     const notMean = mean(not)
-    // eslint-disable-next-line no-console
+     
     console.log(`  mean score: jam=${jamMean.toFixed(2)}  non-jam=${notMean.toFixed(2)}`)
     expect(jamMean).toBeGreaterThan(notMean * 2)
   })
@@ -95,7 +95,7 @@ describe('scoring model — separation', () => {
   it('surfaces most jam acts and few non-jam acts', () => {
     const jamSurfaced = jam.filter((s) => s.result.surfaces).length
     const notSurfaced = not.filter((s) => s.result.surfaces).length
-    // eslint-disable-next-line no-console
+     
     console.log(`  surfaced: ${jamSurfaced}/${jam.length} jam, ${notSurfaced}/${not.length} non-jam\n`)
     expect(jamSurfaced / jam.length).toBeGreaterThan(0.7)
     expect(notSurfaced / not.length).toBeLessThan(0.25)

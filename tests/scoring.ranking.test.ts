@@ -45,7 +45,7 @@ describe('ranked labelled set', () => {
       const flag = f.label === 'jam' ? (r.surfaces ? '  ' : '!!') : r.surfaces ? '!!' : '  '
       return `  ${flag} ${String(r.score).padStart(4)}  sig=${String(r.signalCount).padStart(2)}  ${f.label === 'jam' ? 'JAM' : '   '}  ${f.name.padEnd(28)} ${r.reasons[0] ?? ''}`
     })
-    // eslint-disable-next-line no-console
+     
     console.log('\n  !! marks a disagreement with the hand label\n' + lines.join('\n') + '\n')
     expect(ranked.length).toBe(fixtures.length)
   })
@@ -53,7 +53,7 @@ describe('ranked labelled set', () => {
   it('places every non-jam act below every surfaced threshold breach', () => {
     const topNonJam = Math.max(...ranked.filter((x) => x.f.label === 'not').map((x) => x.r.score))
     const jamAbove = ranked.filter((x) => x.f.label === 'jam' && x.r.score > topNonJam).length
-    // eslint-disable-next-line no-console
+     
     console.log(`  highest non-jam score: ${topNonJam} — ${jamAbove}/30 jam acts rank above it`)
     expect(jamAbove).toBeGreaterThan(20)
   })
