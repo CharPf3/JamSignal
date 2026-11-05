@@ -1,29 +1,130 @@
 @import "tailwindcss";
 
+/**
+ * Tokens.
+ *
+ * Dark mode is a selected set of steps, not an automatic inversion. The score
+ * ramp is ordinal — four tiers, one hue, monotone lightness — and each mode's
+ * steps were validated separately against that mode's card surface:
+ *
+ *   light  #7c3a0d → #e3a134   on #ffffff   light-end contrast 2.23:1
+ *   dark   #f6c667 → #8a5a12   on #16140f   light-end contrast 3.11:1
+ *
+ * Stronger signal carries heavier ink in light mode and brighter ink in dark,
+ * so score reads the same direction in both.
+ */
 :root {
-  --background: #faf7f2;
-  --foreground: #1a1410;
+  --plane: #faf7f2;
   --surface: #ffffff;
+  --surface-sunken: #f4efe6;
+  --ink: #1a1410;
+  --ink-secondary: #57503f;
+  --ink-muted: #8a7d6e;
   --border: #e8e0d4;
-  --muted: #8a7d6e;
+  --border-strong: #d6cab5;
 
-  /* Brand palette — warm amber + deep indigo */
-  --amber-400: #f59e0b;
-  --amber-500: #d97706;
-  --indigo-800: #3730a3;
-  --indigo-900: #312e81;
+  /* Ordinal score ramp, strongest first. */
+  --score-4: #7c3a0d;
+  --score-3: #ad5a0a;
+  --score-2: #d4860e;
+  --score-1: #e3a134;
+  /* Unfilled meter track: a light step of the same hue. */
+  --score-track: #f2e6d2;
+
+  --accent: #ad5a0a;
+  --accent-hover: #7c3a0d;
+  --accent-ink: #ffffff;
+  --focus: #d4860e;
+
+  --radius: 0.875rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --plane: #0d0c0a;
+    --surface: #16140f;
+    --surface-sunken: #110f0b;
+    --ink: #f7f4ee;
+    --ink-secondary: #c5bda9;
+    --ink-muted: #938c7c;
+    --border: #2a2721;
+    --border-strong: #3b372e;
+
+    --score-4: #f6c667;
+    --score-3: #e8a33a;
+    --score-2: #c87f12;
+    --score-1: #8a5a12;
+    --score-track: #2e2719;
+
+    --accent: #e8a33a;
+    --accent-hover: #f6c667;
+    --accent-ink: #16140f;
+    --focus: #f6c667;
+  }
+}
+
+:root[data-theme='dark'] {
+  --plane: #0d0c0a;
+  --surface: #16140f;
+  --surface-sunken: #110f0b;
+  --ink: #f7f4ee;
+  --ink-secondary: #c5bda9;
+  --ink-muted: #938c7c;
+  --border: #2a2721;
+  --border-strong: #3b372e;
+
+  --score-4: #f6c667;
+  --score-3: #e8a33a;
+  --score-2: #c87f12;
+  --score-1: #8a5a12;
+  --score-track: #2e2719;
+
+  --accent: #e8a33a;
+  --accent-hover: #f6c667;
+  --accent-ink: #16140f;
+  --focus: #f6c667;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-plane: var(--plane);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-ink: var(--ink);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  border-color: var(--border);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--plane);
+  color: var(--ink);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Columns of numbers align; standalone values keep proportional figures. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

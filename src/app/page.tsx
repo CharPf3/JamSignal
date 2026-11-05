@@ -1,98 +1,66 @@
-'use client'
+import { Suspense } from 'react'
+import { SearchBar } from '@/components/search/SearchBar'
+import { SearchResults } from '@/components/results/SearchResults'
+import { LoadingStage } from '@/components/results/LoadingStage'
+import { EmptyState } from '@/components/results/EmptyState'
 
-import { useState } from 'react'
-import { SearchForm } from '@/components/search/SearchForm'
-import { EventList } from '@/components/events/EventList'
-import type { EventResult, GeocodedLocation } from '@/types'
+/**
+ * Search state lives in the URL and the search runs on the server.
+ *
+ * Previously state was local React state and the browser fetched
+ * `/api/events`, which meant a search could not be shared, bookmarked or
+ * reloaded, the back button did nothing, and the first paint carried no
+ * results. Reading `searchParams` here makes every search a real address:
+ * `/?location=Madison%2C+WI&radius=50&days=60`.
+ *
+ * The Suspense boundary is keyed on the query, so changing it streams a fresh
+ * skeleton rather than showing stale results under a spinner.
+ */
 
-type SearchState =
-  | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'error'; message: string }
-  | { status: 'done'; events: EventResult[]; location: GeocodedLocation; radius: number; query: string }
+export const metadata = { title: 'JamSignal — jam band shows near you' }
 
-export default function HomePage() {
-  const [search, setSearch] = useState<SearchState>({ status: 'idle' })
+const DEFAULTS = { radius: 50, days: 60 } as const
 
-  async function handleSearch(location: string, radius: number) {
-    setSearch({ status: 'loading' })
+const first = (value: string | string[] | undefined): string | undefined =>
+  Array.isArray(value) ? value[0] : value
 
-    try {
-      const params = new URLSearchParams({
-        location,
-        radius: String(radius),
-      })
-      const res = await fetch(`/api/events?${params}`)
-      const data: unknown = await res.json()
+type Props = {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
 
-      if (!res.ok) {
-        const msg = (data as { error?: string }).error ?? 'Something went wrong'
-        setSearch({ status: 'error', message: msg })
-        return
-      }
-
-      const payload = data as {
-        events: EventResult[]
-        location: GeocodedLocation
-        radius: number
-      }
-
-      setSearch({
-        status: 'done',
-        events: payload.events,
-        location: payload.location,
-        radius: payload.radius,
-        query: location,
-      })
-    } catch {
-      setSearch({ status: 'error', message: 'Network error — please try again.' })
-    }
-  }
+export default async function HomePage({ searchParams }: Props) {
+  const params = await searchParams
+  const location = first(params.location)?.trim() ?? ''
+  const radius = Number(first(params.radius)) || DEFAULTS.radius
+  const days = Number(first(params.days)) || DEFAULTS.days
 
   return (
-    <main className="flex flex-col flex-1">
-      {/* Hero / search header */}
-      <header className="bg-indigo-900 text-white px-4 py-14 text-center space-y-6">
-        <div className="space-y-2">
-          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">JamSignal</h1>
-          <p className="text-indigo-200 text-lg max-w-lg mx-auto leading-relaxed">
-            Find Grateful Dead tribute bands, jam bands, and Dead nights near you.
+    <main className="flex flex-1 flex-col">
+      <header className="border-b border-[var(--border)] bg-[var(--surface)] px-4 py-10 text-center">
+        <div className="mx-auto max-w-2xl space-y-2">
+          <h1 className="text-3xl font-semibold tracking-tight text-[var(--ink)] sm:text-4xl">
+            JamSignal
+          </h1>
+          <p className="text-sm leading-relaxed text-[var(--ink-secondary)] sm:text-base">
+            Jam bands, Dead tributes and improvisational acts playing near you —
+            scored on evidence, with the reasoning shown.
           </p>
-        </div>
-
-        <div className="max-w-2xl mx-auto">
-          <SearchForm
-            onSearch={handleSearch}
-            loading={search.status === 'loading'}
-          />
         </div>
       </header>
 
-      {/* Results */}
-      <div className="flex-1 max-w-3xl w-full mx-auto px-4 py-10">
-        {search.status === 'idle' && (
-          <div className="text-center text-[var(--muted)] space-y-1 pt-8">
-            <p className="text-base font-medium text-[var(--foreground)]">
-              Enter a location to find shows near you.
-            </p>
-            <p className="text-sm">
-              We search across Ticketmaster and more to surface setlist-vetted jam band events.
-            </p>
-          </div>
-        )}
+      <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--plane)]/95 backdrop-blur">
+        <div className="mx-auto max-w-3xl px-4 py-4">
+          <SearchBar location={location} radius={radius} days={days} />
+        </div>
+      </div>
 
-        {search.status === 'error' && (
-          <div className="text-center py-10">
-            <p className="text-red-600 font-medium">{search.message}</p>
-          </div>
-        )}
-
-        {search.status === 'done' && (
-          <EventList
-            events={search.events}
-            location={search.location.display_name.split(',').slice(0, 2).join(',')}
-            radius={search.radius}
-          />
+      <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
+        {location.length < 2 ? (
+          <EmptyState radius={radius} days={days} />
+        ) : (
+          <Suspense key={`${location}|${radius}|${days}`} fallback={<LoadingStage />}>
+            <SearchResults location={location} radius={radius} days={days} />
+          </Suspense>
         )}
       </div>
     </main>
