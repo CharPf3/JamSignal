@@ -22,7 +22,8 @@ import { geocodeLocation } from './sources/geocoding'
 import { fetchEvents } from './sources/ticketmaster'
 import { lookupArtists } from './artists'
 import { resetCacheBreaker, cacheStatus } from './artists/cache'
-import { DISPLAY_THRESHOLD, MARGINAL_THRESHOLD, MODEL_METRICS, MODEL_VERSION } from './scoring'
+import { DISPLAY_THRESHOLD, MODEL_METRICS, MODEL_VERSION } from './scoring'
+import { marginalFloor } from './scoring/aperture'
 import type { ArtistGroup, SearchResponse } from '@/types'
 
 export type SearchOptions = {
@@ -127,9 +128,10 @@ export async function search(options: SearchOptions): Promise<SearchSuccess | Se
   // Pending artists are held back rather than shown with a 0 — we have not
   // looked at them yet, which is different from having found nothing.
   const surfaced = all.filter((g) => !g.pending && g.score >= minScore)
-  const marginal = all.filter(
-    (g) => !g.pending && g.score < minScore && g.score >= MARGINAL_THRESHOLD
-  )
+  // Relative to the chosen cut. Held against the shipped threshold instead, a
+  // strict search would file every mid-scoring act under "weaker signal".
+  const floor = marginalFloor(minScore)
+  const marginal = all.filter((g) => !g.pending && g.score < minScore && g.score >= floor)
   const filtered = all.filter((g) => g.pending || g.score < minScore)
 
   for (const group of all) {
@@ -165,6 +167,12 @@ export async function search(options: SearchOptions): Promise<SearchSuccess | Se
         analyzed_now: analyzed,
         pending_artists: pending,
         surfaced: surfaced.length,
+        /**
+         * Artists scored but held back by the chosen cut, below even the
+         * weaker-evidence band. Reported so a strict search states what it
+         * excluded rather than quietly shrinking the page.
+         */
+        below_aperture: all.filter((g) => !g.pending && g.score < floor).length,
         queries_complete: complete,
         queries_issued: queriesIssued,
         queries_failed: queriesFailed,

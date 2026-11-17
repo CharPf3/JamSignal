@@ -3,6 +3,7 @@ import { SearchBar } from '@/components/search/SearchBar'
 import { SearchResults } from '@/components/results/SearchResults'
 import { LoadingStage } from '@/components/results/LoadingStage'
 import { EmptyState } from '@/components/results/EmptyState'
+import { parseAperture } from '@/lib/scoring/aperture'
 
 /**
  * Search state lives in the URL and the search runs on the server.
@@ -33,6 +34,7 @@ export default async function HomePage({ searchParams }: Props) {
   const location = first(params.location)?.trim() ?? ''
   const radius = Number(first(params.radius)) || DEFAULTS.radius
   const days = Number(first(params.days)) || DEFAULTS.days
+  const aperture = parseAperture(first(params.aperture))
 
   return (
     <main className="flex flex-1 flex-col">
@@ -50,7 +52,7 @@ export default async function HomePage({ searchParams }: Props) {
 
       <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--plane)]/95 backdrop-blur">
         <div className="mx-auto max-w-3xl px-4 py-4">
-          <SearchBar location={location} radius={radius} days={days} />
+          <SearchBar location={location} radius={radius} days={days} aperture={aperture} />
         </div>
       </div>
 
@@ -58,8 +60,8 @@ export default async function HomePage({ searchParams }: Props) {
         {location.length < 2 ? (
           <EmptyState radius={radius} days={days} />
         ) : (
-          <Suspense key={`${location}|${radius}|${days}`} fallback={<LoadingStage />}>
-            <SearchResults location={location} radius={radius} days={days} />
+          <Suspense key={`${location}|${radius}|${days}|${aperture}`} fallback={<LoadingStage />}>
+            <SearchResults location={location} radius={radius} days={days} aperture={aperture} />
           </Suspense>
         )}
       </div>
