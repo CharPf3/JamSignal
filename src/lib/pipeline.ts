@@ -17,6 +17,7 @@
  */
 
 import { missingKeys } from './core/env'
+import { assessCoverage } from './coverage'
 import { geocodeLocation } from './sources/geocoding'
 import { fetchEvents } from './sources/ticketmaster'
 import { lookupArtists } from './artists'
@@ -164,9 +165,10 @@ export async function search(options: SearchOptions): Promise<SearchSuccess | Se
         analyzed_now: analyzed,
         pending_artists: pending,
         surfaced: surfaced.length,
-        complete: complete && pending === 0,
+        queries_complete: complete,
         queries_issued: queriesIssued,
         queries_failed: queriesFailed,
+        coverage: assessCoverage(events, days),
         missing_config: [
           ...missingKeys(),
           ...(cacheStatus().state === 'ok' ? [] : [`artist cache ${cacheStatus().state}`]),

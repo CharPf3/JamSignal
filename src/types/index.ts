@@ -1,3 +1,5 @@
+import type { MarketCoverage } from '@/lib/coverage'
+
 export type { Band, Venue, RecurringNight, Subscription, CommunitySubmission, Database } from './database'
 
 /** Where an event came from. */
@@ -91,10 +93,16 @@ export type SearchDiagnostics = {
   analyzed_now: number
   pending_artists: number
   surfaced: number
-  /** False when a Ticketmaster query failed, meaning results may be partial. */
-  complete: boolean
+  /**
+   * False when a Ticketmaster query failed, so the result is not repeatable.
+   * This is *query* completeness and says nothing about how much of the market
+   * the source can see — `coverage` is what answers that.
+   */
+  queries_complete: boolean
   queries_issued: number
   queries_failed: number
+  /** How much of this market the event source can actually see. */
+  coverage: MarketCoverage
   /** Services that could not run because configuration is missing. */
   missing_config: string[]
   elapsed_ms: number
@@ -109,7 +117,7 @@ export type SearchResponse = {
   groups: ArtistGroup[]
   /**
    * Artists just below the confidence threshold. Shown separately and labelled
-   * as weaker rather than mixed in — see DISPLAY_THRESHOLD in scoring/weights.
+   * as weaker rather than mixed in — see DISPLAY_THRESHOLD in scoring/index.
    */
   marginal: ArtistGroup[]
   total_events: number
