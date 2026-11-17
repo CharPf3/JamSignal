@@ -69,6 +69,31 @@ thrash metal. On the labelled set every artist above the threshold was a jam act
 floor, the Wilson lower bound on 30/30. Letting the model learn this from the
 feature instead was tested first and scored slightly worse (−0.95 pts).
 
+### Strictness is the user's choice
+
+The model answers "is this a jam act?". A listener is asking "should I go to
+this show?", and those come apart on the thirty acts labelled `borderline` —
+held out of fitting because no honest label exists for them. Twenty-three clear
+the shipped threshold. Whether Dave Matthews Band or Joe Bonamassa belongs on a
+Deadhead's results page is a question about taste, not accuracy, so the search
+offers the cut rather than picking one:
+
+| | cut | jam acts | contested | non-jam | precision |
+| --- | --- | --- | --- | --- | --- |
+| Jam bands only | ≥ 7.0 | 78/140 | **0** | **0** | 100% |
+| Jam and adjacent | ≥ 3.6 | 138/140 | 23 | 15 | 90.2% |
+| Anything plausible | ≥ 2.1 | — | — | — | — |
+
+Filtering by the *kind* of evidence was tried first and rejected: "plays the
+canon" (cover attribution) and "in the scene" (similarity graph) admit 21 and 23
+of the contested acts, which is indistinguishable from the 23 the plain
+threshold admits — graph evidence exists for 93% of artists and live evidence
+for 79%, so requiring either filters almost nothing. See
+[`src/lib/scoring/aperture.ts`](src/lib/scoring/aperture.ts).
+
+A stricter cut reports what it removed. An unexplained short page is the same
+failure as an unexplained empty one.
+
 ### Two methodological mistakes worth not repeating
 
 **AUC hid a calibration failure.** An earlier model weighted each tag by its
