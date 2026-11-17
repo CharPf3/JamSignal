@@ -107,6 +107,44 @@ export async function readArtists(keys: string[]): Promise<Map<string, ArtistAna
   return found
 }
 
+/**
+ * Cheap liveness touch, for the scheduled keep-warm.
+ *
+ * Supabase pauses a free project after a week idle and eventually deletes it;
+ * that is how the first index was lost. A read once a day costs nothing and
+ * resets the idle clock. The row count and oldest entry come back with it, so
+ * the cron's own response says whether the index is actually populated rather
+ * than merely reachable.
+ */
+export async function touchCache(): Promise<{
+  ok: boolean
+  rows: number | null
+  oldest: string | null
+  error: string | null
+}> {
+  const db = getClient()
+  if (!db) return { ok: false, rows: null, oldest: null, error: 'Supabase env vars not set' }
+
+  const { data, count, error } = await db
+    .from('artist_index')
+    .select('analyzed_at', { count: 'exact' })
+    .order('analyzed_at', { ascending: true })
+    .limit(1)
+
+  if (error) {
+    noteFailure(error.message)
+    return { ok: false, rows: null, oldest: null, error: error.message }
+  }
+
+  failures = 0
+  return {
+    ok: true,
+    rows: count ?? 0,
+    oldest: (data as Array<{ analyzed_at: string }> | null)?.[0]?.analyzed_at ?? null,
+    error: null,
+  }
+}
+
 /** Writes analyses in one statement. Failures are logged, never thrown. */
 export async function writeArtists(
   entries: Array<{ key: string; name: string; mbid: string | null; analysis: ArtistAnalysis }>

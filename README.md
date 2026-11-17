@@ -135,13 +135,36 @@ response reports what is unconfigured in `diagnostics.missing_config`.
 ### Database
 
 Apply [`supabase/migrations/001_artist_index.sql`](supabase/migrations/001_artist_index.sql)
-via `supabase db push` or the SQL editor. Without it the app still works, but
-every search re-analyses every artist from scratch.
+via `supabase db push` or the SQL editor, then seed it:
 
-> **Note:** free-tier Supabase projects are paused when idle and eventually
-> deleted. That is how the previous index was lost — its host stopped resolving
-> and every cache read failed silently. Keep the project warm or expect to
-> recreate it.
+```bash
+npm run backfill -- --acts                   # every act we already know of
+npm run backfill -- --location "Denver, CO"   # everyone playing in a city
+```
+
+**Without the index the app loses about half its results.** Analysis is capped
+at 30 artists per request so a search cannot run past the 60s function limit,
+and the rest come back `pending`. Measured in Denver, 50 miles, 90 days:
+
+| | artists analysed | surfaced | time |
+| --- | --- | --- | --- |
+| cold, no index | 30 of 194 | 14 | 27s |
+| full analysis | 194 | **31** | 112s — over the limit |
+
+The seventeen artists the budget hides are not filler: Dead Floyd (a Grateful
+Dead / Pink Floyd act, 9.0), Karina Rykman (7.4), Big Head Todd & the Monsters
+(6.7), Big Richard, The Floozies, BERTHA: Grateful Drag. Raising the budget is
+not the fix — 112s exceeds `maxDuration` — which is the whole reason analysis is
+precomputed rather than done per request.
+
+> **Keep it warm.** Free-tier Supabase projects are paused when idle and
+> eventually deleted. That is how the previous index was lost: its host stopped
+> resolving and every cache read failed silently. [`vercel.json`](vercel.json)
+> schedules a daily read against
+> [`/api/cron/keep-warm`](src/app/api/cron/keep-warm/route.ts) to reset the idle
+> clock; set `CRON_SECRET` in Vercel to authenticate it. The route reports row
+> count and oldest entry, so the cron log distinguishes "reachable" from
+> "reachable and populated".
 
 ## Layout
 
@@ -173,7 +196,8 @@ tests/                     scoring validation + committed API fixtures
 | `npm run build` | production build |
 | `npm test` | scoring model validation (20 assertions) |
 | `npm run fit` | refit the model from the fixture and rewrite its artifacts |
-| `npm run backfill -- --acts` | warm the artist index |
+| `npm run backfill -- --acts` | warm the artist index with the curated acts |
+| `npm run backfill -- --location "City, ST"` | warm the index for one market |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 
