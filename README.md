@@ -65,11 +65,11 @@ table, which is what lets the model generalise to bands nobody has listed.
 Grateful Dead set nightly is a Dead act whatever Last.fm says — Cubensis
 averages 8.45 attributed Dead covers per show while Last.fm files it under
 thrash metal. On the labelled set every artist above the threshold was a jam act
-(30/30), so the rule fires above 0.75 covers per show with a 0.90 probability
+(30/30), so the rule fires above 0.90 covers per show with a 0.90 probability
 floor, the Wilson lower bound on 30/30. Letting the model learn this from the
 feature instead was tested first and scored slightly worse (−0.95 pts).
 
-### Two methodological mistakes worth not repeating
+### Three methodological mistakes worth not repeating
 
 **AUC hid a calibration failure.** An earlier model weighted each tag by its
 share of the artist's top tag. That buried the Grateful Dead at 3.7/10 — their
@@ -83,6 +83,17 @@ operating point you ship.**
 jam tag at *any* count while almost every jam act did. Presence is nearly
 conclusive; rank is close to irrelevant, because Last.fm tag counts are
 dominated by whichever generic genre also applies.
+
+**Excluding the contested acts hid where the rule breaks.** The cover-attribution
+threshold was calibrated as 30/30 over `jam` and `pool`, because `borderline`
+acts are held out of fitting. They are also the acts that sit at the rule's
+bottom edge. At 0.75 covers per show it fired on The Record Company — a
+blues-rock trio, labelled `borderline` — at 0.87, forcing it to the 0.90 floor
+and making it the top result for a Madison search, above every real jam act in
+the market. Sweeping the threshold against all three labels shows every value in
+(0.87, 1.00] fires on the same 30 jam acts and nothing else, so the rule now
+fires at 0.90 and the misfire costs no recall. **A held-out class is still part
+of the distribution you ship to.**
 
 ### Reproducing
 

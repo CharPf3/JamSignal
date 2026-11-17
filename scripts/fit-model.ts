@@ -154,16 +154,35 @@ const probability = (w: Float64Array, x: Float64Array): number => {
  * Last.fm files it under thrash metal; The Other Ones plays 12.47 while
  * Last.fm returns an Australian new wave band.
  *
- * Calibrated on the labelled set: P(jam | covers/show >= 0.75) = 30/30. The
- * Wilson 95% lower bound on 30/30 is 0.886, which is where the floor comes
+ * Calibrated on the labelled set: P(jam | covers/show >= threshold) = 30/30.
+ * The Wilson 95% lower bound on 30/30 is 0.886, which is where the floor comes
  * from — the rule does not get to claim certainty from 30 observations.
  *
  * Adding this was worth +4.00 recall points ± 0.57 SE across 25 splits. The
  * obvious alternative — relaxing L2 on the dense features so the model could
  * learn this itself — was tested first and made things slightly worse
  * (-0.95 pts), because the feature is not linear in the way the model assumes.
+ *
+ * ── Why the threshold is 0.90 and not 0.75 ─────────────────────────────────
+ *
+ * The 30/30 calibration is computed over `jam` and `pool` only, because
+ * `borderline` acts are excluded from fitting. That hid the one place the rule
+ * misfires: the contested acts sit exactly at its bottom edge. At 0.75 the rule
+ * fired on The Record Company — a blues-rock trio labelled `borderline` — at
+ * 0.87 covers/show, which forced it to the 0.90 floor and made it the top
+ * result for a Madison search, above every real jam act in the market.
+ *
+ * Sweeping the threshold against all three labels, every value in (0.87, 1.00]
+ * fires on exactly the same 30 jam acts and nothing else, so 0.90 removes the
+ * misfire at no measured recall cost.
+ *
+ * A minimum-shows guard was tested alongside and rejected: `shows >= 3` is the
+ * loosest form of it and already costs Grahame Lesh, who clears the threshold
+ * on only two shows. Two shows is thin evidence for forcing a floor, but the
+ * labelled set says the guard removes a true positive and no false ones, so it
+ * is not added on the strength of the intuition alone.
  */
-const OVERRIDE_COVERS_PER_SHOW = 0.75
+const OVERRIDE_COVERS_PER_SHOW = 0.9
 const OVERRIDE_PROBABILITY = 0.9
 const overridden = (a: Row): boolean => (a.setlist?.coreCoversPerShow ?? 0) >= OVERRIDE_COVERS_PER_SHOW
 
