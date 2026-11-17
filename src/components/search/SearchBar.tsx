@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, Search } from 'lucide-react'
 import { LocationInput } from './LocationInput'
+import { APERTURES, type ApertureName } from '@/lib/scoring/aperture'
 import { cn } from '@/lib/utils'
 
 /**
@@ -13,6 +14,10 @@ import { cn } from '@/lib/utils'
  * no local fetch, no duplicated loading flag. Radius and date range were
  * previously a radius dropdown and a `days` value hardcoded to 60 that the UI
  * never exposed; both are now the user's.
+ *
+ * Strictness is here for the same reason. Whether Dave Matthews Band belongs on
+ * a Deadhead's results page is a question about taste, and the app was deciding
+ * it silently — see scoring/aperture.ts for what each setting measures.
  */
 
 const RADIUS_OPTIONS = [25, 50, 100, 150, 250] as const
@@ -29,24 +34,31 @@ const controlClass = cn(
   'focus:border-[var(--focus)] disabled:opacity-50'
 )
 
-type Props = { location: string; radius: number; days: number }
+type Props = { location: string; radius: number; days: number; aperture: ApertureName }
 
-export function SearchBar({ location: initialLocation, radius: initialRadius, days: initialDays }: Props) {
+export function SearchBar({
+  location: initialLocation,
+  radius: initialRadius,
+  days: initialDays,
+  aperture: initialAperture,
+}: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
   const [location, setLocation] = useState(initialLocation)
   const [radius, setRadius] = useState(initialRadius)
   const [days, setDays] = useState(initialDays)
+  const [aperture, setAperture] = useState(initialAperture)
 
   function go(overrides: Partial<Props> = {}) {
-    const next = { location, radius, days, ...overrides }
+    const next = { location, radius, days, aperture, ...overrides }
     if (next.location.trim().length < 2) return
 
     const query = new URLSearchParams({
       location: next.location.trim(),
       radius: String(next.radius),
       days: String(next.days),
+      aperture: next.aperture,
     })
     startTransition(() => router.push(`/?${query}`))
   }
@@ -108,6 +120,28 @@ export function SearchBar({ location: initialLocation, radius: initialRadius, da
         >
           {DAY_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+
+        <label className="sr-only" htmlFor="aperture">
+          How strict
+        </label>
+        <select
+          id="aperture"
+          value={aperture}
+          onChange={(event) => {
+            const value = event.target.value as ApertureName
+            setAperture(value)
+            go({ aperture: value })
+          }}
+          disabled={pending}
+          title={APERTURES[aperture].description}
+          className={cn(controlClass, 'flex-1')}
+        >
+          {Object.values(APERTURES).map((option) => (
+            <option key={option.name} value={option.name} title={option.description}>
               {option.label}
             </option>
           ))}

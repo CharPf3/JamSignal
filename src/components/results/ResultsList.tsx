@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ChevronRight, Info } from 'lucide-react'
 import { ArtistCard } from './ArtistCard'
 import { coverageNote } from '@/lib/coverage'
+import { APERTURES, DEFAULT_APERTURE, type ApertureName } from '@/lib/scoring/aperture'
 import type { ArtistGroup, SearchResponse } from '@/types'
 
 /**
@@ -21,9 +22,9 @@ import type { ArtistGroup, SearchResponse } from '@/types'
  * else the search could not do.
  */
 
-type Props = { data: SearchResponse }
+type Props = { data: SearchResponse; aperture: ApertureName }
 
-export function ResultsList({ data }: Props) {
+export function ResultsList({ data, aperture }: Props) {
   const { groups, marginal, diagnostics, location, radius } = data
 
   if (groups.length === 0) {
@@ -34,24 +35,35 @@ export function ResultsList({ data }: Props) {
             No jam shows found near {location.label}.
           </p>
           <p className="text-sm text-[var(--ink-muted)]">
-            {diagnostics.raw_events > 0
-              ? `Checked ${diagnostics.unique_artists} ${diagnostics.unique_artists === 1 ? 'artist' : 'artists'} playing within ${radius} miles — none had enough jam signal to surface.`
-              : `Ticketmaster returned no listings within ${radius} miles for these dates.`}
+            {diagnostics.raw_events === 0
+              ? `Ticketmaster returned no listings within ${radius} miles for these dates.`
+              : diagnostics.below_aperture > 0 && aperture === 'strict'
+                ? `Checked ${diagnostics.unique_artists} ${diagnostics.unique_artists === 1 ? 'artist' : 'artists'} within ${radius} miles. ${diagnostics.below_aperture} scored below "${APERTURES.strict.label}" — loosen it to see them.`
+                : `Checked ${diagnostics.unique_artists} ${diagnostics.unique_artists === 1 ? 'artist' : 'artists'} playing within ${radius} miles — none had enough jam signal to surface.`}
           </p>
         </div>
 
-        {radius < 250 && (
+        {aperture !== 'wide' && diagnostics.below_aperture > 0 ? (
           <Link
-            href={`/?location=${encodeURIComponent(location.label)}&radius=${Math.min(radius * 2, 250)}&days=${data.days}`}
+            href={`/?location=${encodeURIComponent(location.label)}&radius=${radius}&days=${data.days}&aperture=wide`}
             className="inline-block text-sm font-medium text-[var(--accent)] underline transition-colors hover:text-[var(--accent-hover)]"
           >
-            Search {Math.min(radius * 2, 250)} miles instead
+            Show anything plausible instead
           </Link>
+        ) : (
+          radius < 250 && (
+            <Link
+              href={`/?location=${encodeURIComponent(location.label)}&radius=${Math.min(radius * 2, 250)}&days=${data.days}&aperture=${aperture}`}
+              className="inline-block text-sm font-medium text-[var(--accent)] underline transition-colors hover:text-[var(--accent-hover)]"
+            >
+              Search {Math.min(radius * 2, 250)} miles instead
+            </Link>
+          )
         )}
 
         {marginal.length > 0 && <MarginalSection groups={marginal} />}
 
-        <Coverage diagnostics={diagnostics} radius={radius} />
+        <Coverage diagnostics={diagnostics} radius={radius} aperture={aperture} />
       </div>
     )
   }
@@ -78,7 +90,7 @@ export function ResultsList({ data }: Props) {
 
       {marginal.length > 0 && <MarginalSection groups={marginal} />}
 
-      <Coverage diagnostics={diagnostics} radius={radius} />
+      <Coverage diagnostics={diagnostics} radius={radius} aperture={aperture} />
     </section>
   )
 }
@@ -122,11 +134,21 @@ function MarginalSection({ groups }: { groups: ArtistGroup[] }) {
 function Coverage({
   diagnostics,
   radius,
+  aperture,
 }: {
   diagnostics: SearchResponse['diagnostics']
   radius: number
+  aperture: ApertureName
 }) {
   const notes: string[] = []
+
+  // A stricter cut is the user's choice, but it still removes results, and an
+  // unexplained short page is the same failure as an unexplained empty one.
+  if (aperture !== DEFAULT_APERTURE && diagnostics.below_aperture > 0) {
+    notes.push(
+      `${diagnostics.below_aperture} more scored below "${APERTURES[aperture].label}" and are not shown.`
+    )
+  }
 
   // First, because it bounds what every other note can mean: the other notes
   // describe work the search skipped, this one describes what it never saw.

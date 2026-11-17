@@ -1,4 +1,5 @@
 import { search } from '@/lib/pipeline'
+import { APERTURES, type ApertureName } from '@/lib/scoring/aperture'
 import { ResultsList } from './ResultsList'
 
 /**
@@ -12,12 +13,19 @@ export async function SearchResults({
   location,
   radius,
   days,
+  aperture,
 }: {
   location: string
   radius: number
   days: number
+  aperture: ApertureName
 }) {
-  const result = await search({ location, radiusMiles: radius, days })
+  const result = await search({
+    location,
+    radiusMiles: radius,
+    days,
+    minScore: APERTURES[aperture].minScore,
+  })
 
   if (!result.ok) {
     return (
@@ -30,5 +38,5 @@ export async function SearchResults({
     )
   }
 
-  return <ResultsList data={result.data} />
+  return <ResultsList data={result.data} aperture={aperture} />
 }

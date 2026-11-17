@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { search } from '@/lib/pipeline'
+import { APERTURES, parseAperture } from '@/lib/scoring/aperture'
 
 /**
  * A warm search is a geocode plus Ticketmaster queries plus one batched cache
@@ -16,11 +17,19 @@ const int = (value: string | null, fallback: number): number => {
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams
 
+  // `aperture` is the named strictness the UI uses; `minScore` stays as the
+  // lower-level escape hatch and wins when both are given.
+  const minScore = params.has('minScore')
+    ? Number(params.get('minScore'))
+    : params.has('aperture')
+      ? APERTURES[parseAperture(params.get('aperture'))].minScore
+      : undefined
+
   const result = await search({
     location: params.get('location') ?? '',
     radiusMiles: int(params.get('radius'), 50),
     days: int(params.get('days'), 60),
-    minScore: params.has('minScore') ? Number(params.get('minScore')) : undefined,
+    minScore,
   })
 
   if (!result.ok) {

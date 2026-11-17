@@ -93,6 +93,8 @@ export type SearchDiagnostics = {
   analyzed_now: number
   pending_artists: number
   surfaced: number
+  /** Scored artists held back by the chosen strictness, below the weaker band. */
+  below_aperture: number
   /**
    * False when a Ticketmaster query failed, so the result is not repeatable.
    * This is *query* completeness and says nothing about how much of the market
@@ -117,7 +119,7 @@ export type SearchResponse = {
   groups: ArtistGroup[]
   /**
    * Artists just below the confidence threshold. Shown separately and labelled
-   * as weaker rather than mixed in — see DISPLAY_THRESHOLD in scoring/index.
+   * as weaker rather than mixed in — see scoring/aperture.ts.
    */
   marginal: ArtistGroup[]
   total_events: number
