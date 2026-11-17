@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ChevronRight, Info } from 'lucide-react'
 import { ArtistCard } from './ArtistCard'
+import { coverageNote } from '@/lib/coverage'
 import type { ArtistGroup, SearchResponse } from '@/types'
 
 /**
@@ -10,6 +11,14 @@ import type { ArtistGroup, SearchResponse } from '@/types'
  * partial result as a complete one. At the time, a third of the Ticketmaster
  * queries were being dropped to rate limiting on every run and artists beyond
  * a budget were silently unscored. When coverage is incomplete now, it says so.
+ *
+ * That was still only half the problem. Query failures are visible to the app;
+ * a market the source simply cannot see is not. Searching Burlington printed
+ * "No events found within 50 miles in this date range" while Higher Ground, one
+ * venue inside that radius, had 71 shows on sale through its own site. The
+ * sentence was false and the inference it invited — that nothing was happening
+ * — was worse. Source blindness is now reported in the same place as everything
+ * else the search could not do.
  */
 
 type Props = { data: SearchResponse }
@@ -27,7 +36,7 @@ export function ResultsList({ data }: Props) {
           <p className="text-sm text-[var(--ink-muted)]">
             {diagnostics.raw_events > 0
               ? `Checked ${diagnostics.unique_artists} ${diagnostics.unique_artists === 1 ? 'artist' : 'artists'} playing within ${radius} miles — none had enough jam signal to surface.`
-              : `No events found within ${radius} miles in this date range.`}
+              : `Ticketmaster returned no listings within ${radius} miles for these dates.`}
           </p>
         </div>
 
@@ -42,7 +51,7 @@ export function ResultsList({ data }: Props) {
 
         {marginal.length > 0 && <MarginalSection groups={marginal} />}
 
-        <Coverage diagnostics={diagnostics} />
+        <Coverage diagnostics={diagnostics} radius={radius} />
       </div>
     )
   }
@@ -69,7 +78,7 @@ export function ResultsList({ data }: Props) {
 
       {marginal.length > 0 && <MarginalSection groups={marginal} />}
 
-      <Coverage diagnostics={diagnostics} />
+      <Coverage diagnostics={diagnostics} radius={radius} />
     </section>
   )
 }
@@ -110,8 +119,19 @@ function MarginalSection({ groups }: { groups: ArtistGroup[] }) {
 }
 
 /** States what the search did and did not cover. */
-function Coverage({ diagnostics }: { diagnostics: SearchResponse['diagnostics'] }) {
+function Coverage({
+  diagnostics,
+  radius,
+}: {
+  diagnostics: SearchResponse['diagnostics']
+  radius: number
+}) {
   const notes: string[] = []
+
+  // First, because it bounds what every other note can mean: the other notes
+  // describe work the search skipped, this one describes what it never saw.
+  const sourceNote = coverageNote(diagnostics.coverage, radius)
+  if (sourceNote) notes.push(sourceNote)
 
   if (diagnostics.queries_failed > 0) {
     notes.push(

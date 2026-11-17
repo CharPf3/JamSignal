@@ -95,6 +95,7 @@ const KNOWN_ACT_GROUPS = {
     'Ghost Light', 'Circles Around The Sun', 'Doom Flamingo', 'Yam Yam',
   ],
   rootsCrossover: [
+    'Big Head Todd & the Monsters', 'Big Head Todd and the Monsters',
     'North Mississippi Allstars', 'Robert Randolph', 'Robert Randolph & The Family Band',
     'Galactic', 'Dumpstaphunk', 'The New Mastersounds', 'Soulive', 'Lettuce',
     'The Motet', 'Karl Denson', "Karl Denson's Tiny Universe", 'The Nth Power',
