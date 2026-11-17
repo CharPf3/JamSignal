@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { search } from '@/lib/pipeline'
 import { cacheStatus } from '@/lib/artists/cache'
 import { analyzeArtist } from '@/lib/artists'
+import { DISPLAY_THRESHOLD } from '@/lib/scoring'
 
 /**
  * Debug endpoint.
@@ -46,8 +47,12 @@ export async function GET(request: NextRequest) {
       reasons: g.reasons,
     }))
 
+  // The model's own threshold, not a hardcoded one — a debug view that cut at a
+  // different score than the app would show a different set than the app does.
   const surfacedNames = new Set(
-    result.data.groups.filter((g) => !g.pending && g.score >= 2.5).map((g) => g.artist_name)
+    result.data.groups
+      .filter((g) => !g.pending && g.score >= DISPLAY_THRESHOLD)
+      .map((g) => g.artist_name)
   )
 
   return NextResponse.json({

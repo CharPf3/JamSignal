@@ -14,9 +14,11 @@
  *               attribution. Precision matters far more than coverage here;
  *               adding a marginal act pollutes both signals.
  *
- *   KNOWN_ACTS  acts we are confident about. Contributes a small prior and
- *               seeds Ticketmaster queries. Being on this list is a nudge, not
- *               a verdict — see scoring/weights.ts.
+ *   KNOWN_ACTS  acts we are confident about. Contributes nothing to the score —
+ *               it only earns an artist the expensive half of the analysis
+ *               (artists/index.ts) and a place near the front of the analysis
+ *               budget (artists/priority.ts), and seeds the backfill. Listing
+ *               an act gets it looked at; the evidence still has to say so.
  *
  * Matching is exact on the normalised name, never substring. Substring matching
  * is what scored "Phish Food Trivia Night" and "Eggy Benedict Brunch Band" as

@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
  * The number is always visible, so the colour is never the only encoding.
  */
 
-/** Maps a score to its ordinal tier. Mirrors BANDS in scoring/weights.ts. */
+/** Maps a score to its ordinal tier. Mirrors BANDS in scoring/index.ts. */
 export function scoreTier(score: number): 1 | 2 | 3 | 4 {
   if (score >= 8) return 4
   if (score >= 6) return 3

@@ -25,7 +25,7 @@ export type Event = {
   start_time: string | null
   ticket_url: string | null
   distance_miles: number | null
-  /** Retained for display only — not used in scoring. See scoring/weights.ts. */
+  /** Retained for display only — not used in scoring — see sources/ticketmaster.ts for the measured AUC. */
   tm_genre: string | null
   tm_subgenre: string | null
 }
