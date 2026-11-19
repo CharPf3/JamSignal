@@ -3,7 +3,7 @@ import type { MarketCoverage } from '@/lib/coverage'
 export type { Band, Venue, RecurringNight, Subscription, CommunitySubmission, Database } from './database'
 
 /** Where an event came from. */
-export type EventSource = 'ticketmaster' | 'bandsintown' | 'jambase' | 'community'
+export type EventSource = 'ticketmaster' | 'venue' | 'bandsintown' | 'jambase' | 'community'
 
 /**
  * A live event as returned by an upstream source. Not persisted — events are
@@ -103,8 +103,14 @@ export type SearchDiagnostics = {
   queries_complete: boolean
   queries_issued: number
   queries_failed: number
-  /** How much of this market the event source can actually see. */
+  /** How much of this market the event sources can actually see. */
   coverage: MarketCoverage
+  /** Registered venues within the radius whose calendars are read directly. */
+  venues_in_range: number
+  /** Of those, how many had a usable cached calendar. */
+  venues_read_directly: number
+  /** Events contributed by venue calendars, before cross-source dedupe. */
+  venue_events: number
   /** Services that could not run because configuration is missing. */
   missing_config: string[]
   elapsed_ms: number

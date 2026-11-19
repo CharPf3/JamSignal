@@ -100,6 +100,21 @@ export function ArtistCard({ group }: Props) {
                   </span>
                 )}
 
+                {/*
+                  Where the listing came from, when it was not Ticketmaster.
+                  Venue calendars are read directly for rooms Ticketmaster does
+                  not carry, and a listing the user cannot corroborate on the
+                  usual site should say so rather than look like a mistake.
+                */}
+                {event.source === 'venue' && (
+                  <span
+                    className="rounded-full bg-[var(--surface-sunken)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--ink-muted)]"
+                    title="Read from the venue's own calendar — not listed on Ticketmaster"
+                  >
+                    venue calendar
+                  </span>
+                )}
+
                 {event.ticket_url && (
                   <a
                     href={event.ticket_url}

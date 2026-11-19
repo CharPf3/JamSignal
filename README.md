@@ -14,10 +14,12 @@ precomputed rather than done per request.
 
 ```
 REQUEST PATH  (no music-API calls when the index is warm)
-  location ──▶ geocode ──▶ Ticketmaster: who is playing nearby
-                              │  throttled · retried · deduped
-                              ▼
-                        join the artist index ──▶ group by artist ──▶ rank
+  location ──▶ geocode ──┬─▶ Ticketmaster: who is playing nearby
+                         │      │  throttled · retried · deduped
+                         └─▶ venue calendars: rooms Ticketmaster misses
+                                │  read from cache, ingested on a schedule
+                                ▼
+                        merge ──▶ join the artist index ──▶ group ──▶ rank
 
 ANALYSIS  (per artist, once, then cached 30 days)
   name ──▶ MusicBrainz: resolve to an MBID
@@ -30,6 +32,66 @@ ANALYSIS  (per artist, once, then cached 30 days)
 Jam bands don't change between searches, so analysing them on the request path
 is the wrong place for the work. Search joins against the index; only artists
 never seen before are analysed inline, under a budget.
+
+## Event sources
+
+Ticketmaster answers "who is playing near me", and for a long time it was the
+only source. Its coverage turns out to be **bimodal**: where a venue sells
+tickets through it, the API returns that venue's whole calendar; where it does
+not, the API returns the occasional one-off and says nothing about the rest.
+
+Measured for Burlington VT, 50 miles, **180 days**, sweeping fourteen
+classifications — far wider than a normal search:
+
+| | |
+| --- | --- |
+| Ticketmaster, whole metro | **11 events, 1 venue** |
+| Higher Ground's own calendar, that venue alone | **71 shows** |
+
+Of roughly eleven jam-relevant shows there, Ticketmaster had one. It missed Tom
+Hamilton, lespecial, Karina Rykman, the Dirty Dozen Brass Band, Shadowgrass, and
+a Grateful Dead night billed as *Dead Sessions*. This is not only a
+small-market problem: **Twiddle and TAUK are playing Cervantes in Denver and
+Ticketmaster has neither**, though both are acts this app already knows by name.
+
+So a second source reads venue calendars directly, from a curated registry.
+
+```
+venue events RSS ──▶ event page URLs ──▶ each page's schema.org Event
+                                            name · startDate · offers.url
+```
+
+Four other approaches were tried and rejected:
+
+| approach | why not |
+| --- | --- |
+| Bandsintown API | refused — "not accepting API requests for third-party projects" |
+| The Events Calendar REST API | 404 on every venue probed |
+| Listing-page scraping | dates appear only as bare "Nov 19" text, no year, absent for some |
+| iCal | **the worst trap** — see below |
+
+**A valid feed is not a current one.** Salvage Station's iCal returns 200,
+`text/calendar`, 147KB, fifty syntactically perfect events — and the newest is
+from May 2021. The venue moved its live calendar and left the old feed serving,
+so every signal a naive fetcher checks says the data is good. Nothing is written
+unless a feed passes [`freshness.ts`](src/lib/sources/venues/freshness.ts).
+
+Venue viability has to be checked by hand, which is why the registry is curated
+rather than crawled. Of six venues probed: one live feed, one stale, three
+near-empty, and two that refuse automated requests — `highergroundmusic.com`
+answers 403, which the ingestion treats as a legitimate answer rather than
+something to work around.
+
+```bash
+npm run ingest -- --list                    # the registry
+npm run ingest -- --venue <key> --dry-run   # check a feed before adding it
+npm run ingest                              # all venues (scheduled daily in CI)
+```
+
+Ingestion never runs on the request path: one feed fetch plus one page fetch per
+event, 114 for Cervantes, paced by each host's crawl-delay. It runs as a GitHub
+Action rather than a Vercel cron because minutes of wall clock will not fit in a
+60s function.
 
 ## Scoring
 
@@ -159,12 +221,17 @@ response reports what is unconfigured in `diagnostics.missing_config`.
 
 ### Database
 
-Apply [`supabase/migrations/001_artist_index.sql`](supabase/migrations/001_artist_index.sql)
-via `supabase db push` or the SQL editor, then seed it:
+Apply both migrations via `supabase db push` or the SQL editor —
+[`001_artist_index.sql`](supabase/migrations/001_artist_index.sql) (the
+precomputed artist analysis search joins against) and
+[`002_venue_events.sql`](supabase/migrations/002_venue_events.sql) (cached venue
+calendars, which unlike the index is a short-TTL copy of published listings
+rather than an authority). Then seed them:
 
 ```bash
 npm run backfill -- --acts                   # every act we already know of
 npm run backfill -- --location "Denver, CO"   # everyone playing in a city
+npm run ingest                                # venue calendars
 ```
 
 **Without the index the app loses about half its results.** Analysis is capped
@@ -208,6 +275,7 @@ src/
     core/                  rate limiting, retry, HTTP, env
     canon/                 known acts, canon songs, name normalisation
     sources/               musicbrainz · lastfm · setlistfm · ticketmaster · geocoding
+      venues/              curated venue registry, feed + JSON-LD ingestion
     artists/               the artist index and its persistence
     scoring/               the learned model and its generated artifacts
 tests/                     scoring validation + committed API fixtures
@@ -222,6 +290,7 @@ tests/                     scoring validation + committed API fixtures
 | `npm test` | scoring model validation (20 assertions) |
 | `npm run fit` | refit the model from the fixture and rewrite its artifacts |
 | `npm run backfill -- --acts` | warm the artist index with the curated acts |
+| `npm run ingest` | read venue calendars into the cache |
 | `npm run backfill -- --location "City, ST"` | warm the index for one market |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
@@ -238,7 +307,10 @@ curl 'localhost:3000/api/debug/search?artist=Armchair+Boogie' | jq
 
 ## Attribution
 
-Event data from Ticketmaster. Genre and similarity data from Last.fm. Setlists
+Event data from Ticketmaster and, for venues it does not carry, from those
+venues' own published calendars — read as schema.org structured data, with each
+host's robots.txt and crawl-delay honoured and a descriptive User-Agent sent so
+a venue that prefers to refuse automated requests can. Genre and similarity data from Last.fm. Setlists
 from [setlist.fm](https://www.setlist.fm), whose attribution link is shown with
 any artist where setlist data contributed. Artist identity from MusicBrainz.
 Geocoding by Nominatim / OpenStreetMap.
