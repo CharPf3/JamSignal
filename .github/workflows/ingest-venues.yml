@@ -1,0 +1,51 @@
+name: Ingest venue calendars
+
+# Venue ingestion cannot run as a Vercel cron. A venue's feed lists event-page
+# URLs but no usable dates, so each page is fetched for its schema.org Event —
+# 114 pages for Cervantes, paced by the host's crawl-delay. That is minutes of
+# wall clock against a 60s function limit, so it runs here instead, where a long
+# job is free and the only cost is patience.
+#
+# Daily, because a calendar is a claim about the near future and the cache holds
+# a 7-day TTL: six consecutive failures can pass before the app starts treating
+# a venue as unknown rather than quietly serving last month's shows.
+
+on:
+  schedule:
+    # 09:20 UTC — early morning US, after venues post overnight updates, and off
+    # the hour to avoid the scheduler's busiest minute.
+    - cron: '20 9 * * *'
+  workflow_dispatch:
+    inputs:
+      venue:
+        description: 'Single venue key (blank = all registered venues)'
+        required: false
+      dry_run:
+        description: 'Fetch and report without writing'
+        type: boolean
+        default: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    # Generous: the job is bounded by politeness delays, not by work.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Ingest
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.venue }}" ]; then ARGS="$ARGS --venue ${{ inputs.venue }}"; fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          npm run ingest -- $ARGS
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

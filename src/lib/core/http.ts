@@ -7,6 +7,7 @@
  */
 
 import { retry, type RetryOptions } from './concurrency'
+import { USER_AGENT } from './env'
 
 export class HttpError extends Error {
   constructor(
@@ -66,6 +67,46 @@ export async function fetchJson<T>(url: string, options: JsonOptions = {}): Prom
     }
 
     return res.json() as Promise<T>
+  }
+
+  return retry(attempt, {
+    attempts: 3,
+    backoffMs: 600,
+    retryOn: (err) => !(err instanceof HttpError) || err.isTransient,
+    ...options.retry,
+  })
+}
+
+/**
+ * Fetches a text document — RSS, iCal, HTML — with the same retry and error
+ * semantics as `fetchJson`.
+ *
+ * Venue calendars are not JSON, and they are third-party pages rather than
+ * APIs, so this sends a descriptive User-Agent: a venue that wants to refuse
+ * automated requests should be able to identify them. `highergroundmusic.com`
+ * answers 403 to exactly this, and that is a legitimate answer the ingestion
+ * respects rather than works around.
+ */
+export async function fetchText(url: string, options: JsonOptions = {}): Promise<string> {
+  const { headers, revalidate, timeoutMs = DEFAULT_TIMEOUT_MS, signal } = options
+
+  const attempt = async (): Promise<string> => {
+    const timeout = AbortSignal.timeout(timeoutMs)
+    const res = await fetch(url, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xml,text/plain', ...headers },
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+      ...(revalidate === false
+        ? { cache: 'no-store' as const }
+        : revalidate !== undefined
+          ? { next: { revalidate } }
+          : {}),
+    })
+
+    if (!res.ok) {
+      throw new HttpError(res.status, url, parseRetryAfter(res.headers.get('retry-after')))
+    }
+
+    return res.text()
   }
 
   return retry(attempt, {

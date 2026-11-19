@@ -17,14 +17,16 @@
  */
 
 import { missingKeys } from './core/env'
+import { normalizeName } from './canon/normalize'
 import { assessCoverage } from './coverage'
 import { geocodeLocation } from './sources/geocoding'
 import { fetchEvents } from './sources/ticketmaster'
+import { venueEventsNear, venueStoreState } from './sources/venues'
 import { lookupArtists } from './artists'
 import { resetCacheBreaker, cacheStatus } from './artists/cache'
 import { DISPLAY_THRESHOLD, MODEL_METRICS, MODEL_VERSION } from './scoring'
 import { marginalFloor } from './scoring/aperture'
-import type { ArtistGroup, SearchResponse } from '@/types'
+import type { ArtistGroup, Event, SearchResponse } from '@/types'
 
 export type SearchOptions = {
   location: string
@@ -50,6 +52,41 @@ function dateRange(days: number): { startDate: string; endDate: string } {
   return { startDate: fmt(now), endDate: fmt(end) }
 }
 
+/**
+ * Combines the event sources, preferring Ticketmaster where they overlap.
+ *
+ * They do overlap: Cervantes is a registered venue whose calendar is read
+ * directly, and Ticketmaster separately carries some of its shows — Lotus
+ * appeared in both. Ticketmaster wins a tie because its listing carries the
+ * attraction name and genre taxonomy, which a venue feed has no equivalent of.
+ *
+ * Keyed on normalised performer and date rather than venue, because the two
+ * sources spell the same room differently ("Cervantes Masterpiece Ballroom"
+ * against "Cervantes' Masterpiece Ballroom") and matching on that would let
+ * duplicates through. The cost is that one artist playing two rooms in the same
+ * metro on one night collapses to a single entry, which is rare and a better
+ * failure than showing the same show twice.
+ */
+function mergeSources(ticketmaster: Event[], venueEvents: Event[]): Event[] {
+  const key = (e: Event): string => `${normalizeName(e.artist_name)}|${e.date}`
+  const seen = new Set(ticketmaster.map(key))
+  const merged = [...ticketmaster]
+
+  for (const event of venueEvents) {
+    const k = key(event)
+    if (seen.has(k)) continue
+    seen.add(k)
+    merged.push(event)
+  }
+
+  return merged.sort(
+    (a, b) =>
+      a.date.localeCompare(b.date) ||
+      (a.distance_miles ?? 9999) - (b.distance_miles ?? 9999) ||
+      a.id.localeCompare(b.id)
+  )
+}
+
 export async function search(options: SearchOptions): Promise<SearchSuccess | SearchFailure> {
   const started = Date.now()
   const { location, radiusMiles, days } = options
@@ -72,14 +109,33 @@ export async function search(options: SearchOptions): Promise<SearchSuccess | Se
   }
 
   // ── Candidate generation ────────────────────────────────────────────────
+  //
+  // Two sources, because one is not enough. Ticketmaster only lists venues that
+  // sell tickets through it, and the rooms the jam scene plays frequently do
+  // not: it has eleven events for the whole Burlington metro against
+  // seventy-one at one venue there, and it carries neither Twiddle nor TAUK at
+  // Cervantes. Venue calendars are read on a schedule and joined here from
+  // cache, never fetched on the request path.
   const { startDate, endDate } = dateRange(days)
-  const { events, queriesIssued, queriesFailed, complete } = await fetchEvents({
-    latitude: geo.latitude,
-    longitude: geo.longitude,
-    radius: radiusMiles,
-    startDate,
-    endDate,
-  })
+  const [ticketmaster, venues] = await Promise.all([
+    fetchEvents({
+      latitude: geo.latitude,
+      longitude: geo.longitude,
+      radius: radiusMiles,
+      startDate,
+      endDate,
+    }),
+    venueEventsNear({
+      latitude: geo.latitude,
+      longitude: geo.longitude,
+      radiusMiles,
+      startDate,
+      endDate,
+    }).catch(() => ({ events: [], venuesInRange: 0, venuesWithData: 0 })),
+  ])
+
+  const { queriesIssued, queriesFailed, complete } = ticketmaster
+  const events = mergeSources(ticketmaster.events, venues.events)
 
   // ── Ranking ─────────────────────────────────────────────────────────────
   // The listing title and Ticketmaster subgenre are passed along purely to
@@ -177,9 +233,16 @@ export async function search(options: SearchOptions): Promise<SearchSuccess | Se
         queries_issued: queriesIssued,
         queries_failed: queriesFailed,
         coverage: assessCoverage(events, days),
+        /** Registered venues in range, and how many had a usable calendar. */
+        venues_read_directly: venues.venuesWithData,
+        venues_in_range: venues.venuesInRange,
+        venue_events: venues.events.length,
         missing_config: [
           ...missingKeys(),
           ...(cacheStatus().state === 'ok' ? [] : [`artist cache ${cacheStatus().state}`]),
+          ...(venues.venuesInRange > 0 && venueStoreState().state !== 'ok'
+            ? [`venue calendars ${venueStoreState().state}`]
+            : []),
         ],
         elapsed_ms: Date.now() - started,
         model: {

@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "backfill": "tsx scripts/backfill.ts",
-    "fit": "tsx scripts/fit-model.ts"
+    "fit": "tsx scripts/fit-model.ts",
+    "ingest": "tsx scripts/ingest-venues.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
